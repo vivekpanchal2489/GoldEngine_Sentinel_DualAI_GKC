@@ -33,18 +33,48 @@ input int    InpZone1StartMin       = 30;     // Zone 1 Start Minute (IST)
 input double InpZone1Confidence     = 0.550;  // Zone 1 Confidence Threshold (Sydney/Tokyo - 55.0%)
 input double InpZone1Margin         = 0.070;  // Zone 1 Margin Gap (7.0%)
 input double InpZone1MaxLot         = 0.08;   // Zone 1 Max Lot (Asian Chop Shield: Max 0.08 lots)
+input double InpZone1StepSizeUSD     = 10.0;   // Zone 1 Step Ladder Trailing Step ($10 USD)
 
 input int    InpZone2StartHour      = 13;     // Zone 2 Start Hour (IST, default 1:30 PM)
 input int    InpZone2StartMin       = 30;     // Zone 2 Start Minute (IST)
 input double InpZone2Confidence     = 0.535;  // Zone 2 Confidence Threshold (London/NY Peak - 53.5%)
 input double InpZone2Margin         = 0.050;  // Zone 2 Margin Gap (5.0%)
 input double InpZone2MaxLot         = 1.00;   // Zone 2 Max Lot (London/NY Peak: Full Dynamic Sizing)
+input double InpZone2StepSizeUSD     = 15.0;   // Zone 2 Step Ladder Trailing Step ($15 USD)
 
 input int    InpZone3StartHour      = 21;     // Zone 3 Start Hour (IST, default 9:30 PM)
 input int    InpZone3StartMin       = 30;     // Zone 3 Start Minute (IST)
 input double InpZone3Confidence     = 0.550;  // Zone 3 Confidence Threshold (Late NY Close - 55.0%)
 input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
 input double InpZone3MaxLot         = 0.10;   // Zone 3 Max Lot (Night Drift Shield: Max 0.10 lots)
+input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
+
+//+------------------------------------------------------------------+
+//| GetActiveStepSizeUSD — Dynamic Session Step Ladder Trailing Step |
+//+------------------------------------------------------------------+
+double GetActiveStepSizeUSD(const double defaultStepUSD = 15.0)
+{
+   if(!InpUseDynamicScheduler)
+      return defaultStepUSD;
+
+   MqlDateTime dt;
+   TimeLocal(dt); // Computer system clock (IST)
+   int currentMinutes = dt.hour * 60 + dt.min;
+   
+   int z1Minutes = InpZone1StartHour * 60 + InpZone1StartMin;
+   int z2Minutes = InpZone2StartHour * 60 + InpZone2StartMin;
+   int z3Minutes = InpZone3StartHour * 60 + InpZone3StartMin;
+
+   // Zone 1: Sydney/Tokyo Open & Morning Chop (3:30 AM to 1:30 PM IST)
+   if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
+      return InpZone1StepSizeUSD;
+   // Zone 2: London & NY Peak (1:30 PM to 9:30 PM IST)
+   else if(currentMinutes >= z2Minutes && currentMinutes < z3Minutes)
+      return InpZone2StepSizeUSD;
+   // Zone 3: Late NY Close & Night Drift (9:30 PM to 3:30 AM IST)
+   else
+      return InpZone3StepSizeUSD;
+}
 
 //+------------------------------------------------------------------+
 //| Risk & Position Sizing                                           |

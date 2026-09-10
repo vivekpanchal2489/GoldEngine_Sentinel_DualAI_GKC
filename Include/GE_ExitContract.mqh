@@ -164,12 +164,27 @@ void CheckExitContractTick()
       double targetSL = 0.0;
       bool modifyNeeded = false;
 
-      //=== METHOD A: USD-based Step Ladder Trail (locks in $10 at $15, $15 at $30, $30 at $45...) ===
+      //=== METHOD A: USD-based Step Ladder Trail (locks in $5 at $10 for $10 step, $10 at $15 for $15 step, scaling infinitely) ===
       if(InpUseStepLadder)
       {
+         double activeStep = GetActiveStepSizeUSD(InpStepSizeUSD);
          double lockedProfitUSD = 0.0;
          
-         if(lot <= 0.09)
+         if(activeStep <= 10.0)
+         {
+            if(profit >= activeStep && profit < 2.0 * activeStep)
+            {
+               // First step (e.g. $10.00 to $19.99): lock $5.00 (+USD buffer)
+               lockedProfitUSD = activeStep * 0.5;
+            }
+            else if(profit >= 2.0 * activeStep)
+            {
+               // Subsequent steps ($20 -> $10, $30 -> $20, $40 -> $30, $50 -> $40... infinitely until closed)
+               int n = (int)(profit / activeStep);
+               lockedProfitUSD = (n - 1) * activeStep;
+            }
+         }
+         else if(lot <= 0.09)
          {
             if(profit >= 15.0 && profit < 30.0)
             {
@@ -177,16 +192,16 @@ void CheckExitContractTick()
             }
             else if(profit >= 30.0)
             {
-               int n = (int)(profit / InpStepSizeUSD);
-               lockedProfitUSD = (n - 1) * InpStepSizeUSD;
+               int n = (int)(profit / activeStep);
+               lockedProfitUSD = (n - 1) * activeStep;
             }
          }
-         else // lot > 0.09
+         else // standard step size with normal lot
          {
-            if(profit >= 2.0 * InpStepSizeUSD)
+            if(profit >= 2.0 * activeStep)
             {
-               int n = (int)(profit / InpStepSizeUSD);
-               lockedProfitUSD = (n - 1) * InpStepSizeUSD;
+               int n = (int)(profit / activeStep);
+               lockedProfitUSD = (n - 1) * activeStep;
             }
          }
          
