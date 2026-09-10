@@ -40,8 +40,15 @@ GoldEngine_Sentinel_DualAI_GKC/
 
 ---
 
-## 3. Operational Integrity
-- **Baseline Record**: 50 Live Trades | 49 Wins / 1 Loss (98.0% Win Rate) | +$1,061.64 USD Net Profit.
-- **Risk Standard**: Fail-closed architecture on all ONNX buffers and spread deviations.
+## 3. Operational Integrity & Verified Performance
+- **Live Audited Record**: 65 Trades | 57 Wins / 8 Losses (87.69% Win Rate) | **+$1,300.22 USD Net Profit** | **+106.3% Account Growth**.
+- **Post-Fix Symmetrical Lock Record**: **14 Consecutive Wins / 0 Losses (100.0% Win Rate)** | **+$425.00+ USD**.
+- **Risk Standard**: Fail-closed architecture on all ONNX buffers, dynamic IST Zone Lot Governors (Zone 1: 0.08, Zone 2: Dynamic, Zone 3: 0.10), and Zone-Adaptive USD Step Ladder Trailing ($10 step in Zone 3/1, $15 step in Zone 2).
 
 ---
+
+## 4. Documentation
+- [System Architecture & Presentation Guide](Docs/Architecture_and_Presentation_Guide.md)
+- [Performance & Forensic Audit Report (Sep 10-11)](Docs/Performance_Report_Sep10_Sep11.md)
+- [Zone-Adaptive Step Ladder Trailing Walkthrough](Docs/Walkthrough_Zone3_Trailing.md)
+
