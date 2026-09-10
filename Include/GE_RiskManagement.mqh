@@ -17,6 +17,7 @@ double g_cachedRegimeTrendProb = 0.5;
 double g_cachedRegimeChopProb  = 0.5;
 
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| Dynamic Balance Sizing Settings                                  |
 //+------------------------------------------------------------------+
 input group "=== Dynamic Account Balance Sizing ($100 -> 0.02) ==="
@@ -24,6 +25,26 @@ input bool   InpUseDynamicBalanceSizing = true;    // Dynamic Lot Sizing based o
 input double InpBaseMinLot              = 0.02;    // Minimum Base Lot (at <= $100 balance)
 input double InpBalanceStepUSD          = 100.0;   // Balance Increment Step ($100)
 input double InpLotStepIncrement        = 0.01;    // Lot Increment per Step (+0.01)
+
+input group "=== Dynamic Session Conviction & Lot Scheduler (IST) ==="
+input bool   InpUseDynamicScheduler = true;   // Enable dynamic conviction & lot thresholds by time zone
+input int    InpZone1StartHour      = 3;      // Zone 1 Start Hour (IST, default 3:30 AM)
+input int    InpZone1StartMin       = 30;     // Zone 1 Start Minute (IST)
+input double InpZone1Confidence     = 0.550;  // Zone 1 Confidence Threshold (Sydney/Tokyo - 55.0%)
+input double InpZone1Margin         = 0.070;  // Zone 1 Margin Gap (7.0%)
+input double InpZone1MaxLot         = 0.08;   // Zone 1 Max Lot (Asian Chop Shield: Max 0.08 lots)
+
+input int    InpZone2StartHour      = 13;     // Zone 2 Start Hour (IST, default 1:30 PM)
+input int    InpZone2StartMin       = 30;     // Zone 2 Start Minute (IST)
+input double InpZone2Confidence     = 0.535;  // Zone 2 Confidence Threshold (London/NY Peak - 53.5%)
+input double InpZone2Margin         = 0.050;  // Zone 2 Margin Gap (5.0%)
+input double InpZone2MaxLot         = 1.00;   // Zone 2 Max Lot (London/NY Peak: Full Dynamic Sizing)
+
+input int    InpZone3StartHour      = 21;     // Zone 3 Start Hour (IST, default 9:30 PM)
+input int    InpZone3StartMin       = 30;     // Zone 3 Start Minute (IST)
+input double InpZone3Confidence     = 0.550;  // Zone 3 Confidence Threshold (Late NY Close - 55.0%)
+input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
+input double InpZone3MaxLot         = 0.10;   // Zone 3 Max Lot (Night Drift Shield: Max 0.10 lots)
 
 //+------------------------------------------------------------------+
 //| Risk & Position Sizing                                           |
@@ -109,8 +130,33 @@ double StreakMultiplier(const SStreakState &s)
 }
 
 //+------------------------------------------------------------------+
+//| GetActiveZoneMaxLot — dynamic session lot ceiling governor       |
+//+------------------------------------------------------------------+
+double GetActiveZoneMaxLot()
+{
+   if(!InpUseDynamicScheduler)
+      return InpMaxLotSize;
+
+   MqlDateTime dt;
+   TimeLocal(dt); // Computer system clock (IST)
+   int currentMinutes = dt.hour * 60 + dt.min;
+   
+   int z1Minutes = InpZone1StartHour * 60 + InpZone1StartMin;
+   int z2Minutes = InpZone2StartHour * 60 + InpZone2StartMin;
+   int z3Minutes = InpZone3StartHour * 60 + InpZone3StartMin;
+
+   if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
+      return InpZone1MaxLot;
+   else if(currentMinutes >= z2Minutes && currentMinutes < z3Minutes)
+      return InpZone2MaxLot;
+   else
+      return InpZone3MaxLot;
+}
+
+//+------------------------------------------------------------------+
 //| CalculateDynamicBalanceLot — User-specified balance formula      |
 //| $100 -> 0.02, $200 -> 0.03, $300 -> 0.04, +0.01 per $100        |
+//| Governed by Zone-Adaptive lot ceiling (Zone 1: 0.08 max)         |
 //+------------------------------------------------------------------+
 double CalculateDynamicBalanceLot()
 {
@@ -126,6 +172,11 @@ double CalculateDynamicBalanceLot()
    if(hundreds < 1) hundreds = 1;
 
    double calculatedLot = InpBaseMinLot + (hundreds - 1) * InpLotStepIncrement;
+
+   // Apply Zone-Adaptive Lot Governor Ceiling
+   double zoneCap = GetActiveZoneMaxLot();
+   if(zoneCap > 0.0 && calculatedLot > zoneCap)
+      calculatedLot = zoneCap;
 
    if(calculatedLot < InpBaseMinLot) calculatedLot = InpBaseMinLot;
    if(calculatedLot < minLot) calculatedLot = minLot;

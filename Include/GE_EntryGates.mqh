@@ -58,23 +58,6 @@ input double InpOnnxConfidence      = 0.535;  // Min ONNX probability required f
 input double InpOnnxMargin          = 0.050;  // Min probability gap (BULL vs BEAR) required for ONNX's own trades (5.0%)
 input double InpStrategyOnnxMinProb = 0.515;  // Min ONNX probability required for AI-strategy entries (51.5%)
 
-input group "=== Dynamic Session Conviction Scheduler (IST-based) ==="
-input bool   InpUseDynamicScheduler = true;   // Enable dynamic conviction thresholds by time zone
-input int    InpZone1StartHour      = 3;      // Zone 1 Start Hour (IST, default 3:30 AM)
-input int    InpZone1StartMin       = 30;     // Zone 1 Start Minute (IST)
-input double InpZone1Confidence     = 0.550;  // Zone 1 Confidence Threshold (Sydney/Tokyo - 55.0%)
-input double InpZone1Margin         = 0.070;  // Zone 1 Margin Gap (7.0%)
-
-input int    InpZone2StartHour      = 13;     // Zone 2 Start Hour (IST, default 1:30 PM)
-input int    InpZone2StartMin       = 30;     // Zone 2 Start Minute (IST)
-input double InpZone2Confidence     = 0.535;  // Zone 2 Confidence Threshold (London/NY Peak - 53.5%)
-input double InpZone2Margin         = 0.050;  // Zone 2 Margin Gap (5.0%)
-
-input int    InpZone3StartHour      = 21;     // Zone 3 Start Hour (IST, default 9:30 PM)
-input int    InpZone3StartMin       = 30;     // Zone 3 Start Minute (IST)
-input double InpZone3Confidence     = 0.550;  // Zone 3 Confidence Threshold (Late NY Close - 55.0%)
-input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
-
 //+------------------------------------------------------------------+
 //| Format12Hour — convert hour/minute to 12h AM/PM string           |
 //+------------------------------------------------------------------+
