@@ -291,16 +291,21 @@ void DashboardBuildLines(string &lines[])
    ArrayAdd(lines, "IST Schedule   : " + activeZoneSched);
 
    // Line 4: SuperGRU 76 (AI Brain 1 - Temporal Sequence Context)
-   ArrayAdd(lines, StringFormat("SuperGRU 76    : %s %.1f%% | Margin %.3f (8-Hour Multi-Horizon Window)",
-            g_dashOnnxClass, g_dashOnnxProb * 100.0, g_dashOnnxMargin));
+   ArrayAdd(lines, StringFormat("SuperGRU 76    : %s %.1f%% (B:%.1f%%  S:%.1f%%) | Margin: %+.3f",
+            g_dashOnnxClass, g_dashOnnxProb * 100.0,
+            g_cachedOnnxBull * 100.0, g_cachedOnnxBear * 100.0,
+            (g_cachedOnnxBull >= g_cachedOnnxBear ? g_dashOnnxMargin : -g_dashOnnxMargin)));
 
    // Line 5: Master AI 76 (AI Brain 2 - Live Microstructure & Order Flow)
-   string masterStr = "N/A";
+   string masterStr = "N/A (Initializing...)";
    if(g_masterValid)
    {
       string mClass = (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR");
-      masterStr = StringFormat("%s (B:%.1f%%  N:%.1f%%  S:%.1f%%) | Delta: %+.1f",
-                               mClass, g_masterProbBull * 100.0, g_masterProbNeu * 100.0, g_masterProbBear * 100.0, g_masterDelta);
+      double mProb  = MathMax(g_masterProbBull, g_masterProbBear);
+      masterStr = StringFormat("%s %.1f%% (B:%.1f%%  S:%.1f%%) | Delta : %+.1f",
+                               mClass, mProb * 100.0,
+                               g_masterProbBull * 100.0, g_masterProbBear * 100.0,
+                               g_masterDelta);
    }
    ArrayAdd(lines, StringFormat("Master AI 76   : %s", masterStr));
 
@@ -310,23 +315,34 @@ void DashboardBuildLines(string &lines[])
    else if(g_masterLiquiditySweep >= 0.99) sweepStr = "SWEEP HIGH (Bearish Liquidity Reversal Armed)";
    ArrayAdd(lines, StringFormat("Liquidity Sweep: %s", sweepStr));
 
-   // Line 7: Nadaraya-Watson Envelope (10 3 open)
+   // Line 7: Gaussian Kernel Channel (GKC Envelope)
    bool topVeto = IsPriceAtTopExhaustion();
    bool botVeto = IsPriceAtBottomExhaustion();
    string nweVeto = "[VETO: NONE]";
    if(topVeto) nweVeto = "[VETO: TOP-BUY]";
    else if(botVeto) nweVeto = "[VETO: BOT-SELL]";
-   ArrayAdd(lines, StringFormat("NWE (10 3 open): Mid: %.2f | Upper: %.2f | Lower: %.2f %s",
+   ArrayAdd(lines, StringFormat("GKC (10 3 open): Mid: %.2f | Upper: %.2f | Lower: %.2f %s",
             GetNweMidline(), GetNweUpperBand(), GetNweLowerBand(), nweVeto));
 
    // Line 8: Next Planned Trade Action
    ArrayAdd(lines, StringFormat("Next Trade     : %s", g_dashNextAction));
 
    // Line 9: Last block reason
-   if(StringLen(g_dashLastBlockSource) > 0)
-      ArrayAdd(lines, StringFormat("Last block     : %s - %s", g_dashLastBlockSource, g_dashLastBlockReason));
+   if(StringLen(g_dashLastBlockReason) > 0)
+   {
+      if(StringLen(g_dashLastBlockSource) > 0)
+         ArrayAdd(lines, StringFormat("Last block     : %s - %s", g_dashLastBlockSource, g_dashLastBlockReason));
+      else
+         ArrayAdd(lines, StringFormat("Last block     : %s", g_dashLastBlockReason));
+   }
+   else if(StringFind(g_dashNextAction, "BLOCKED") >= 0)
+   {
+      ArrayAdd(lines, StringFormat("Last block     : %s", g_dashNextAction));
+   }
    else
-      ArrayAdd(lines, "Last block     : -");
+   {
+      ArrayAdd(lines, "Last block     : NONE (All Systems Clear)");
+   }
 
    // Line 10: Today's stats
    ArrayAdd(lines, StringFormat("Today          : %d trades | %dW %dL | Net: %s$%.2f",
@@ -342,14 +358,14 @@ string DashboardTruncateIfNeeded(string text)
    uint w, h;
    TextSetFont("Segoe UI", -10 * 10, 0);
    TextGetSize(text, w, h);
-   if(w <= 900) return text;
+   if(w <= 940) return text;
 
    string trimmed = text;
    while(StringLen(trimmed) > 3)
    {
       trimmed = StringSubstr(trimmed, 0, StringLen(trimmed) - 1);
       TextGetSize(trimmed + "...", w, h);
-      if(w <= 900) return trimmed + "...";
+      if(w <= 940) return trimmed + "...";
    }
    return trimmed;
 }

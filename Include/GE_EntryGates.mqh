@@ -630,11 +630,15 @@ void GetNextTradeAction(string &nextAction)
    if(InpKillSwitch || g_killSwitchBtnActive)
    {
       nextAction = "BLOCKED (Kill Switch Active)";
+      g_lastBlockSource = "SYSTEM";
+      g_lastBlockReason = "KILL_SWITCH";
       return;
    }
    if(!g_cachedOnnxValid)
    {
       nextAction = "BLOCKED (ONNX Cache Invalid)";
+      g_lastBlockSource = "SYSTEM";
+      g_lastBlockReason = "ONNX_INVALID";
       return;
    }
    
@@ -659,6 +663,8 @@ void GetNextTradeAction(string &nextAction)
          }
       }
       nextAction = StringFormat("BLOCKED (Open %s - Concurrency)", pType);
+      g_lastBlockSource = "RISK_CAP";
+      g_lastBlockReason = "MAX_CONCURRENT_POSITIONS";
       return;
    }
    
@@ -683,6 +689,8 @@ void GetNextTradeAction(string &nextAction)
       if(sameDirCount >= InpMaxPositionsPerDir)
       {
          nextAction = StringFormat("BLOCKED (Max %s Open)", dir);
+         g_lastBlockSource = "RISK_CAP";
+         g_lastBlockReason = StringFormat("MAX_%s_POSITIONS", dir);
          return;
       }
    }
@@ -707,12 +715,18 @@ void GetNextTradeAction(string &nextAction)
       {
          nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s Delta %+.1f)",
                                    (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         g_lastBlockSource = "DUAL_AI";
+         g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s Delta %+.1f)",
+                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          return;
       }
       else if(dir == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
       {
          nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s Delta %+.1f)",
                                    (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         g_lastBlockSource = "DUAL_AI";
+         g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s Delta %+.1f)",
+                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          return;
       }
    }
@@ -727,6 +741,9 @@ void GetNextTradeAction(string &nextAction)
    if(dirProb < activeConf || margin < activeMargin)
    {
       nextAction = StringFormat("%s (Waiting for Conviction)", dir);
+      g_lastBlockSource = "ONNX_CORE";
+      g_lastBlockReason = StringFormat("LOW_CONVICTION (Prob %.2f < %.2f / Margin %.3f < %.3f)",
+                                       dirProb, activeConf, margin, activeMargin);
       return;
    }
    
