@@ -49,6 +49,34 @@ input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
 input double InpZone3MaxLot         = 0.10;   // Zone 3 Max Lot (Night Drift Shield: Max 0.10 lots)
 input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
 
+input group "=== Night Curfew & Bank Rollover Protection (IST) ==="
+input bool   InpUseNightCurfew      = true;   // Enable Night Curfew (No new trades between 01:30 AM and 03:30 AM IST)
+input int    InpCurfewStartHour     = 1;      // Curfew Start Hour (IST, 1:30 AM)
+input int    InpCurfewStartMin      = 30;     // Curfew Start Min (IST)
+input int    InpCurfewEndHour       = 3;      // Curfew End Hour (IST, 3:30 AM - Zone 1 open)
+input int    InpCurfewEndMin        = 30;     // Curfew End Min (IST)
+
+//+------------------------------------------------------------------+
+//| IsNightCurfewActive — Checks if current IST time is in curfew    |
+//+------------------------------------------------------------------+
+bool IsNightCurfewActive()
+{
+   if(!InpUseDynamicScheduler || !InpUseNightCurfew)
+      return false;
+
+   MqlDateTime dt;
+   TimeLocal(dt); // Computer system clock (IST)
+   int currentMinutes = dt.hour * 60 + dt.min;
+   
+   int curfewStart = InpCurfewStartHour * 60 + InpCurfewStartMin; // 1:30 AM (90 mins)
+   int curfewEnd   = InpCurfewEndHour * 60 + InpCurfewEndMin;     // 3:30 AM (210 mins)
+
+   if(currentMinutes >= curfewStart && currentMinutes < curfewEnd)
+      return true;
+
+   return false;
+}
+
 //+------------------------------------------------------------------+
 //| GetActiveStepSizeUSD — Dynamic Session Step Ladder Trailing Step |
 //+------------------------------------------------------------------+

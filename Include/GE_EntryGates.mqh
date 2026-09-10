@@ -90,9 +90,20 @@ void GetActiveConvictionSettings(double &activeConf, double &activeMargin, strin
    int z1Minutes = InpZone1StartHour * 60 + InpZone1StartMin;
    int z2Minutes = InpZone2StartHour * 60 + InpZone2StartMin;
    int z3Minutes = InpZone3StartHour * 60 + InpZone3StartMin;
+   int curfewStart = InpCurfewStartHour * 60 + InpCurfewStartMin;
 
+   // Night Curfew Window: 1:30 AM to 3:30 AM IST (Bank Rollover & Illiquidity Protection)
+   if(InpUseNightCurfew && currentMinutes >= curfewStart && currentMinutes < z1Minutes)
+   {
+      activeConf = 0.999;
+      activeMargin = 0.999;
+      activeZoneName = "NIGHT CURFEW";
+      activeZoneSched = StringFormat("%s - %s (Curfew: No New Trades)", 
+                                     Format12Hour(InpCurfewStartHour, InpCurfewStartMin), 
+                                     Format12Hour(InpCurfewEndHour, InpCurfewEndMin));
+   }
    // Zone 1: Sydney/Tokyo Open & Morning Chop (3:30 AM to 1:30 PM IST)
-   if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
+   else if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
    {
       activeConf = InpZone1Confidence;
       activeMargin = InpZone1Margin;
@@ -113,7 +124,7 @@ void GetActiveConvictionSettings(double &activeConf, double &activeMargin, strin
                                      Format12Hour(InpZone3StartHour, InpZone3StartMin), 
                                      activeConf, activeMargin);
    }
-   // Zone 3: Late NY Close & Night Drift (9:30 PM to 3:30 AM IST)
+   // Zone 3: Late NY Close & Night Drift (9:30 PM to 1:30 AM IST)
    else
    {
       activeConf = InpZone3Confidence;
@@ -121,7 +132,7 @@ void GetActiveConvictionSettings(double &activeConf, double &activeMargin, strin
       activeZoneName = "LATE NY DRIFT";
       activeZoneSched = StringFormat("%s - %s (U-Strict: %.2f/%.2f)", 
                                      Format12Hour(InpZone3StartHour, InpZone3StartMin), 
-                                     Format12Hour(InpZone1StartHour, InpZone1StartMin), 
+                                     Format12Hour(InpCurfewStartHour, InpCurfewStartMin), 
                                      activeConf, activeMargin);
    }
 }
@@ -260,6 +271,16 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    {
       rec.result       = "BLOCKED";
       rec.block_reason = "KILL_SWITCH";
+      LogTradeAttempt(rec);
+      return false;
+   }
+
+   //=== GATE 0.5: Dynamic Night Curfew Gate (01:30 AM to 03:30 AM IST) ===
+   if(IsNightCurfewActive())
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "NIGHT_CURFEW";
+      rec.ai_reason_text = "Night Curfew Active (01:30 AM - 03:30 AM IST Rollover Protection) - No New Trades";
       LogTradeAttempt(rec);
       return false;
    }
@@ -705,6 +726,15 @@ void GetNextTradeAction(string &nextAction)
    if(isConsensusReady)
    {
       nextAction = StringFormat("%s (Dual-AI Consensus Armed)", dir);
+      return;
+   }
+
+   // Check Night Curfew
+   if(IsNightCurfewActive())
+   {
+      nextAction = "BLOCKED (Curfew Active - No New Trades)";
+      g_lastBlockSource = "NIGHT_CURFEW";
+      g_lastBlockReason = "CURFEW_ACTIVE (01:30 AM - 03:30 AM Rollover Protection)";
       return;
    }
 
