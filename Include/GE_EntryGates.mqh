@@ -313,6 +313,59 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
             LogTradeAttempt(rec);
             return false;
          }
+
+         // DUAL-AI SYMMETRICAL LOCK: Master AI & Delta confirmation
+         if(g_masterValid)
+         {
+            if(direction == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
+            {
+               rec.result       = "BLOCKED";
+               rec.block_reason = "DUAL_AI_DIVERGENCE";
+               rec.ai_reason_text = StringFormat("SuperGRU Bullish %.3f blocked: Master AI Bull %.3f < 0.50 or Delta %.2f < 0",
+                                                 g_cachedOnnxBull, g_masterProbBull, g_masterDelta);
+               LogTradeAttempt(rec);
+               return false;
+            }
+            else if(direction == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
+            {
+               rec.result       = "BLOCKED";
+               rec.block_reason = "DUAL_AI_DIVERGENCE";
+               rec.ai_reason_text = StringFormat("SuperGRU Bearish %.3f blocked: Master AI Bear %.3f < 0.50 or Delta %.2f > 0",
+                                                 g_cachedOnnxBear, g_masterProbBear, g_masterDelta);
+               LogTradeAttempt(rec);
+               return false;
+            }
+         }
+
+         // CANDLE DIRECTION & ABSORPTION WICK FILTER
+         double open1  = iOpen(_Symbol, _Period, 1);
+         double close1 = iClose(_Symbol, _Period, 1);
+         double high1  = iHigh(_Symbol, _Period, 1);
+         double low1   = iLow(_Symbol, _Period, 1);
+         double range1 = MathMax(high1 - low1, 1e-8);
+         double loWick1 = (MathMin(open1, close1) - low1) / range1;
+         double upWick1 = (high1 - MathMax(open1, close1)) / range1;
+
+         // For BUY: Do not buy into a solid falling red bar unless it has a >= 20% lower rejection wick
+         if(direction == "BUY" && close1 < open1 && loWick1 < 0.20)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
+            rec.ai_reason_text = StringFormat("Red Bar (Close %.2f < Open %.2f) without lower absorption wick (%.1f%% < 20%%)",
+                                              close1, open1, loWick1 * 100.0);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         // For SELL: Do not sell into a solid rising green bar unless it has a >= 20% upper rejection wick
+         else if(direction == "SELL" && close1 > open1 && upWick1 < 0.20)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
+            rec.ai_reason_text = StringFormat("Green Bar (Close %.2f > Open %.2f) without upper absorption wick (%.1f%% < 20%%)",
+                                              close1, open1, upWick1 * 100.0);
+            LogTradeAttempt(rec);
+            return false;
+         }
       }
       else if(strategySource == "SUPER_TREND_CONSENSUS")
       {
@@ -662,6 +715,23 @@ void GetNextTradeAction(string &nextAction)
    {
       nextAction = StringFormat("%s (Dual-AI Consensus Armed)", dir);
       return;
+   }
+
+   // If Master AI diverges from SuperGRU direction, show telemetry block
+   if(g_masterValid)
+   {
+      if(dir == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
+      {
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s Delta %+.1f)",
+                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         return;
+      }
+      else if(dir == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
+      {
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s Delta %+.1f)",
+                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         return;
+      }
    }
 
    // Check ONNX Core thresholds (using dynamic settings)

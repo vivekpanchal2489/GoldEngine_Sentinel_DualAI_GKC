@@ -847,14 +847,27 @@ void DispatchEnabledStrategies()
    }
 
    //===================================================================
-   // SETUP D: ONNX_CORE (SuperGRU 76 Core Direction Engine)
+   // SETUP D: ONNX_CORE (SuperGRU 76 Core Direction Engine - Dual-AI Locked)
    //===================================================================
    if(InpUseSuperGruCoreTrend && g_cachedOnnxValid)
    {
+      // Symmetrical Dual-AI Lock:
+      // BUY requires SuperGRU Bull > Bear AND (if Master AI is active, Master AI Bull >= 0.50 AND Delta >= 0.0)
       if(g_cachedOnnxBull > g_cachedOnnxBear)
-         AttemptTradePlacement("ONNX_CORE", "BUY");
+      {
+         if(!g_masterValid || (g_masterProbBull >= 0.50 && g_masterDelta >= 0.0))
+         {
+            AttemptTradePlacement("ONNX_CORE", "BUY");
+         }
+      }
+      // SELL requires SuperGRU Bear > Bull AND (if Master AI is active, Master AI Bear >= 0.50 AND Delta <= 0.0)
       else if(g_cachedOnnxBear > g_cachedOnnxBull)
-         AttemptTradePlacement("ONNX_CORE", "SELL");
+      {
+         if(!g_masterValid || (g_masterProbBear >= 0.50 && g_masterDelta <= 0.0))
+         {
+            AttemptTradePlacement("ONNX_CORE", "SELL");
+         }
+      }
    }
 }
 
