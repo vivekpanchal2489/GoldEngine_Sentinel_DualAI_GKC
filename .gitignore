@@ -1,0 +1,16 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Editor & IDE files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# MetaTrader Log files
+*.log
+*.tmp
+GoldDecisionLog.csv
+SentinelOutcomes.csv
