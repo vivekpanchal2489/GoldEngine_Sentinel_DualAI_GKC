@@ -758,6 +758,8 @@ void UpdateOnnxCache()
          g_masterLiquiditySweep = (double)masterFeatures[13]; // 13: liquidity_sweep (+1.0 sweep high, -1.0 sweep low)
          g_masterImbalance      = (double)masterFeatures[2];  // 2: of_imbalance_ratio
          g_masterLargeTrade     = (double)masterFeatures[5];  // 5: of_large_trade_ratio
+         g_masterFastDelta3Pct  = g_goldFeatures.GetFastDelta3Pct();
+         g_masterMacroDelta12Pct= g_goldFeatures.GetMacroDelta12Pct();
       }
       else
       {
@@ -771,11 +773,11 @@ void UpdateOnnxCache()
 
    RefreshRegimeCache();
 
-   PrintFormat("[Dual-AI Inferred] Bar %s -> SuperGRU: BULL %.3f | BEAR %.3f | MasterAI: BULL %.3f | NEU %.3f | BEAR %.3f | Delta: %.2f | Sweep: %.1f",
+   PrintFormat("[Dual-AI Inferred] Bar %s -> SuperGRU: BULL %.3f | BEAR %.3f | MasterAI: BULL %.3f | NEU %.3f | BEAR %.3f | Flow 60m: %+.1f%% | Fast 15m: %+.1f%% | Sweep: %.1f",
                TimeToString(currentBarTime, TIME_DATE|TIME_MINUTES),
                g_cachedOnnxBull, g_cachedOnnxBear,
                g_masterProbBull, g_masterProbNeu, g_masterProbBear,
-               g_masterDelta, g_masterLiquiditySweep);
+               g_masterMacroDelta12Pct, g_masterFastDelta3Pct, g_masterLiquiditySweep);
 }
 
 //+------------------------------------------------------------------+
@@ -798,12 +800,14 @@ void DispatchEnabledStrategies()
    if(InpUseSuperTrendConsensus && g_cachedOnnxValid && g_masterValid)
    {
       if(g_cachedOnnxBull >= InpStrategyOnnxMinProb && g_cachedOnnxBull > g_cachedOnnxBear &&
-         g_masterProbBull >= 0.475 && g_masterProbBull > g_masterProbBear && g_masterDelta >= 0.0)
+         g_masterProbBull >= 0.475 && g_masterProbBull > g_masterProbBear &&
+         (g_masterMacroDelta12Pct >= 0.0 || g_masterDelta >= 0.0) && g_masterFastDelta3Pct >= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "BUY")) return;
       }
       else if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
-              g_masterProbBear >= 0.475 && g_masterProbBear > g_masterProbBull && g_masterDelta <= 0.0)
+              g_masterProbBear >= 0.475 && g_masterProbBear > g_masterProbBull &&
+              (g_masterMacroDelta12Pct <= 0.0 || g_masterDelta <= 0.0) && g_masterFastDelta3Pct <= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "SELL")) return;
       }

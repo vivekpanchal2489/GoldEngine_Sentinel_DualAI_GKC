@@ -177,6 +177,8 @@ input group "=== Risk & Position Sizing ==="
 input bool   InpUseConcurrencyCap   = true;    // Enforce the max-position cap and per-trade risk limit
 input int    InpMaxConcurrentTrades = 3;       // Max simultaneous positions the EA may hold (Max 3 Concurrent Trades)
 input int    InpMaxPositionsPerDir  = 3;       // Max simultaneous positions in the same direction
+input double InpMinEntrySpacingPts   = 6.0;     // Min price distance (pts) to open concurrent position in same direction
+input int    InpMinEntryCooldownBars = 2;       // Min M5 bars (10 mins) between opening concurrent positions
 input double InpRiskPerTradeUSD     = 25.0;    // Risk per trade in USD — baseline for flat sizing
 input double InpMinRiskUSD          = 100.0;   // Floor USD risk per trade (minimum allowed risk)
 input double InpMaxRiskUSD          = 500.0;   // Ceiling USD risk per trade (maximum allowed risk)

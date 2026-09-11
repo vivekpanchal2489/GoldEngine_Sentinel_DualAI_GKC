@@ -302,10 +302,10 @@ void DashboardBuildLines(string &lines[])
    {
       string mClass = (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR");
       double mProb  = MathMax(g_masterProbBull, g_masterProbBear);
-      masterStr = StringFormat("%s %.1f%% (B:%.1f%%  S:%.1f%%) | Delta : %+.1f",
+      masterStr = StringFormat("%s %.1f%% (B:%.1f%%  S:%.1f%%) | Flow: %+.0f%% (15m: %+.0f%%)",
                                mClass, mProb * 100.0,
                                g_masterProbBull * 100.0, g_masterProbBear * 100.0,
-                               g_masterDelta);
+                               g_masterMacroDelta12Pct, g_masterFastDelta3Pct);
    }
    ArrayAdd(lines, StringFormat("Master AI 76   : %s", masterStr));
 

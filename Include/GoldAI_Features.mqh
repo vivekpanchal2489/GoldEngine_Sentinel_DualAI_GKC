@@ -35,9 +35,14 @@ private:
    int               m_ema20D1Handle;
    
    double            m_lastAtr;
+   double            m_lastFastDelta3Pct;
+   double            m_lastMacroDelta12Pct;
 
 public:
    string            m_symEUR, m_symJPY, m_symGBP, m_symCAD, m_symSEK, m_symCHF;
+
+   double            GetFastDelta3Pct()   const { return m_lastFastDelta3Pct; }
+   double            GetMacroDelta12Pct() const { return m_lastMacroDelta12Pct; }
 
    string DiscoverBrokerSymbol(string standardName)
    {
@@ -70,7 +75,7 @@ public:
       m_atrH1Handle(INVALID_HANDLE), m_ema20H1Handle(INVALID_HANDLE),
       m_atrH4Handle(INVALID_HANDLE), m_ema20H4Handle(INVALID_HANDLE),
       m_atrD1Handle(INVALID_HANDLE), m_ema20D1Handle(INVALID_HANDLE),
-      m_lastAtr(2.0),
+      m_lastAtr(2.0), m_lastFastDelta3Pct(0.0), m_lastMacroDelta12Pct(0.0),
       m_symEUR("EURUSD"), m_symJPY("USDJPY"), m_symGBP("GBPUSD"),
       m_symCAD("USDCAD"), m_symSEK("USDSEK"), m_symCHF("USDCHF") {}
       
@@ -227,6 +232,7 @@ public:
       
       // Calculate delta across 15 bars
       double deltas[15];
+      double bar_vols[15];
       for(int k = 0; k < 15; k++)
       {
          double bar_range = MathMax(rates[k].high - rates[k].low, EPS);
@@ -234,6 +240,7 @@ public:
          double bv = (double)rates[k].tick_volume * MathMax(0.0, MathMin(1.0, 0.5 + 0.5 * (bar_body / bar_range)));
          double sv = (double)rates[k].tick_volume - bv;
          deltas[k] = bv - sv;
+         bar_vols[k] = MathMax((double)rates[k].tick_volume, 1.0);
          if(k == 0) { buy_v = bv; sell_v = sv; imbal = (bv + sv > 0.0) ? (bv - sv)/(bv + sv) : 0.0; }
       }
       for(int k = 0; k < 12; k++) cum_delta_12 += deltas[k];
@@ -245,6 +252,15 @@ public:
       features[2] = (float)imbal;                                      // 2: of_imbalance_ratio
       features[3] = (float)(cum_delta_12 / (atr + EPS));               // 3: of_cumulative_delta_12
       features[4] = (float)((cum_delta_12 - cum_delta_12_s3) / (atr + EPS)); // 4: of_delta_momentum
+
+      // Dual-Horizon Percentage Deltas (-100.0% to +100.0%)
+      double sum_d3 = 0.0, sum_v3 = 0.0;
+      for(int k = 0; k < 3; k++) { sum_d3 += deltas[k]; sum_v3 += bar_vols[k]; }
+      double sum_d12 = 0.0, sum_v12 = 0.0;
+      for(int k = 0; k < 12; k++) { sum_d12 += deltas[k]; sum_v12 += bar_vols[k]; }
+
+      m_lastFastDelta3Pct   = (sum_v3 > 0.0) ? (sum_d3 / sum_v3) * 100.0 : 0.0;
+      m_lastMacroDelta12Pct = (sum_v12 > 0.0) ? (sum_d12 / sum_v12) * 100.0 : 0.0;
       
       double avg_trade_0 = tot_v / trade_cnt;
       double sum_avg_t = 0.0;

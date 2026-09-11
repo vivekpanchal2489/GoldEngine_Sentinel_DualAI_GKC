@@ -177,6 +177,8 @@ double   g_masterProbBear       = 0.0;
 bool     g_masterValid          = false;
 double   g_masterDelta          = 0.0;
 double   g_masterDeltaMom       = 0.0;
+double   g_masterFastDelta3Pct  = 0.0;
+double   g_masterMacroDelta12Pct= 0.0;
 double   g_masterLiquiditySweep = 0.0; // +1.0 = sweep high (bearish), -1.0 = sweep low (bullish)
 double   g_masterImbalance      = 0.0;
 double   g_masterLargeTrade     = 0.0;
@@ -337,24 +339,46 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       }
    }
 
-   // 3. BOSS 3: Order Flow Delta Institutional Alignment
+   // 3. BOSS 3: Dual-Horizon Order Flow Delta Institutional Alignment
    if(g_masterValid)
    {
-      if(direction == "BUY" && g_masterDelta < 0.0)
+      if(direction == "BUY")
       {
-         rec.result       = "BLOCKED";
-         rec.block_reason = "DELTA_CONFLICT";
-         rec.ai_reason_text = StringFormat("BUY blocked: Opposing Order Flow Delta %.2f < 0", g_masterDelta);
-         LogTradeAttempt(rec);
-         return false;
+         if(g_masterMacroDelta12Pct < 0.0 || g_masterDelta < 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %.1f%% < 0", g_masterMacroDelta12Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         else if(g_masterFastDelta3Pct < 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "FAST_DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("BUY blocked: 15m Fast Delta %.1f%% < 0 (Short-term Selling Pressure)", g_masterFastDelta3Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
       }
-      else if(direction == "SELL" && g_masterDelta > 0.0)
+      else if(direction == "SELL")
       {
-         rec.result       = "BLOCKED";
-         rec.block_reason = "DELTA_CONFLICT";
-         rec.ai_reason_text = StringFormat("SELL blocked: Opposing Order Flow Delta %.2f > 0", g_masterDelta);
-         LogTradeAttempt(rec);
-         return false;
+         if(g_masterMacroDelta12Pct > 0.0 || g_masterDelta > 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > 0", g_masterMacroDelta12Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         else if(g_masterFastDelta3Pct > 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "FAST_DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("SELL blocked: 15m Fast Delta %+.1f%% > 0 (Short-term Buyer Absorption)", g_masterFastDelta3Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
       }
    }
 
@@ -388,27 +412,36 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   // 5. GUARD 2: NWE Volatility Anti-Overextension Guard (Universal Boundary)
+   // 5. GUARD 2: NWE Dynamic Volatility Anti-Overextension Guard (Universal Boundary)
    if(InpUseNweEngine && g_nweMAE > 0.0)
    {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double c0  = iClose(_Symbol, _Period, 0);
+      double nweRange = g_nweUpperBand - g_nweLowerBand;
 
-      if(direction == "BUY" && ask >= g_nweUpperBand)
+      if(nweRange > 0.0)
       {
-         rec.result       = "BLOCKED";
-         rec.block_reason = "NWE_OVEREXTENSION";
-         rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f at Upper NWE Band %.2f (Exhaustion Top)", ask, g_nweUpperBand);
-         LogTradeAttempt(rec);
-         return false;
-      }
-      else if(direction == "SELL" && bid <= g_nweLowerBand)
-      {
-         rec.result       = "BLOCKED";
-         rec.block_reason = "NWE_OVEREXTENSION";
-         rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f at Lower NWE Band %.2f (Exhaustion Bottom)", bid, g_nweLowerBand);
-         LogTradeAttempt(rec);
-         return false;
+         double channelPos = (c0 - g_nweLowerBand) / nweRange; // 0.0 = lower band floor, 1.0 = upper band ceiling
+
+         if(direction == "BUY" && (ask >= g_nweUpperBand || channelPos > 0.80))
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "NWE_OVEREXTENSION";
+            rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f at Upper NWE Band %.2f (Channel Pos %.1f%% > 80%% Ceiling)",
+                                              ask, g_nweUpperBand, channelPos * 100.0);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         else if(direction == "SELL" && (bid <= g_nweLowerBand || channelPos < 0.20))
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "NWE_OVEREXTENSION";
+            rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f at Lower NWE Band %.2f (Channel Pos %.1f%% < 20%% Floor)",
+                                              bid, g_nweLowerBand, channelPos * 100.0);
+            LogTradeAttempt(rec);
+            return false;
+         }
       }
    }
 
@@ -451,6 +484,63 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
          rec.block_reason = "SAME_DIR_CAP";
          LogTradeAttempt(rec);
          return false;
+      }
+   }
+
+   //=== GATE 2c: Concurrent Position Spacing & Cooldown Filter ===
+   if(InpMinEntrySpacingPts > 0.0 || InpMinEntryCooldownBars > 0)
+   {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      datetime nowTime = TimeCurrent();
+
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket <= 0 || PositionGetString(POSITION_SYMBOL) != _Symbol)
+            continue;
+         string posDir = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? "BUY" : "SELL");
+         if(posDir != direction)
+            continue;
+
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         datetime openTime = (datetime)PositionGetInteger(POSITION_TIME);
+
+         // Check time cooldown
+         int elapsedSecs = (int)(nowTime - openTime);
+         int requiredCooldownSecs = InpMinEntryCooldownBars * PeriodSeconds(_Period);
+         if(InpMinEntryCooldownBars > 0 && elapsedSecs < requiredCooldownSecs)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "CONCURRENT_ENTRY_COOLDOWN";
+            rec.ai_reason_text = StringFormat("Position #%I64u opened %d sec ago (< %d sec cooldown)",
+                                              ticket, elapsedSecs, requiredCooldownSecs);
+            LogTradeAttempt(rec);
+            return false;
+         }
+
+         // Check price spacing
+         if(InpMinEntrySpacingPts > 0.0)
+         {
+            if(direction == "BUY" && ask < openPrice + InpMinEntrySpacingPts * _Point)
+            {
+               rec.result       = "BLOCKED";
+               rec.block_reason = "CONCURRENT_ENTRY_SPACING";
+               rec.ai_reason_text = StringFormat("BUY spacing too close: Ask %.2f vs Open %.2f (< %.1f pts)",
+                                                 ask, openPrice, InpMinEntrySpacingPts);
+               LogTradeAttempt(rec);
+               return false;
+            }
+            else if(direction == "SELL" && bid > openPrice - InpMinEntrySpacingPts * _Point)
+            {
+               rec.result       = "BLOCKED";
+               rec.block_reason = "CONCURRENT_ENTRY_SPACING";
+               rec.ai_reason_text = StringFormat("SELL spacing too close: Bid %.2f vs Open %.2f (< %.1f pts)",
+                                                 bid, openPrice, InpMinEntrySpacingPts);
+               LogTradeAttempt(rec);
+               return false;
+            }
+         }
       }
    }
 
@@ -737,44 +827,68 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
 
-   // 4. Check 3-Boss Alignment: Dual-AI Divergence & Delta Conflict
+   // 4. Check 3-Boss Alignment: Dual-AI Divergence & Dual-Horizon Delta Conflict
    if(g_masterValid)
    {
-      if(dir == "BUY" && (g_masterProbBull < 0.475 || g_masterProbBull <= g_masterProbBear || g_masterDelta < 0.0))
+      if(dir == "BUY")
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s %.1f%% | Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterDelta);
-         g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s | Delta %+.1f)",
-                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
-         return;
+         if(g_masterProbBull < 0.475 || g_masterProbBull <= g_masterProbBear || g_masterMacroDelta12Pct < 0.0 || g_masterDelta < 0.0)
+         {
+            nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s %.1f%% | 60m Delta %+.1f%%)",
+                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterMacroDelta12Pct);
+            g_lastBlockSource = "DUAL_AI";
+            g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s | 60m Delta %+.1f%%)",
+                                             (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterMacroDelta12Pct);
+            return;
+         }
+         else if(g_masterFastDelta3Pct < 0.0)
+         {
+            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% < 0)", g_masterFastDelta3Pct);
+            g_lastBlockSource = "ORDER_FLOW";
+            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% < 0)", g_masterFastDelta3Pct);
+            return;
+         }
       }
-      else if(dir == "SELL" && (g_masterProbBear < 0.475 || g_masterProbBear <= g_masterProbBull || g_masterDelta > 0.0))
+      else if(dir == "SELL")
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s %.1f%% | Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterDelta);
-         g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s | Delta %+.1f)",
-                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
-         return;
+         if(g_masterProbBear < 0.475 || g_masterProbBear <= g_masterProbBull || g_masterMacroDelta12Pct > 0.0 || g_masterDelta > 0.0)
+         {
+            nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s %.1f%% | 60m Delta %+.1f%%)",
+                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterMacroDelta12Pct);
+            g_lastBlockSource = "DUAL_AI";
+            g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s | 60m Delta %+.1f%%)",
+                                             (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterMacroDelta12Pct);
+            return;
+         }
+         else if(g_masterFastDelta3Pct > 0.0)
+         {
+            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% > 0)", g_masterFastDelta3Pct);
+            g_lastBlockSource = "ORDER_FLOW";
+            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% > 0)", g_masterFastDelta3Pct);
+            return;
+         }
       }
    }
 
    // 5. Check NWE Volatility Exhaustion Veto
    if(InpUseNweEngine)
    {
-      if(dir == "BUY" && IsPriceAtTopExhaustion())
+      double c0 = iClose(_Symbol, _Period, 0);
+      double nweRange = g_nweUpperBand - g_nweLowerBand;
+      double channelPos = (nweRange > 0.0) ? (c0 - g_nweLowerBand) / nweRange : 0.5;
+
+      if(dir == "BUY" && (IsPriceAtTopExhaustion() || channelPos > 0.80))
       {
-         nextAction = "BLOCKED (NWE Top Exhaustion Veto)";
+         nextAction = "BLOCKED (NWE Top Ceiling Veto > 80%)";
          g_lastBlockSource = "NWE_EXHAUSTION";
-         g_lastBlockReason = "TOP_EXHAUSTION (Price >= Upper NWE Band)";
+         g_lastBlockReason = StringFormat("TOP_EXHAUSTION (Channel Pos %.1f%% > 80%%)", channelPos * 100.0);
          return;
       }
-      else if(dir == "SELL" && IsPriceAtBottomExhaustion())
+      else if(dir == "SELL" && (IsPriceAtBottomExhaustion() || channelPos < 0.20))
       {
-         nextAction = "BLOCKED (NWE Bottom Exhaustion Veto)";
+         nextAction = "BLOCKED (NWE Bottom Floor Veto < 20%)";
          g_lastBlockSource = "NWE_EXHAUSTION";
-         g_lastBlockReason = "BOTTOM_EXHAUSTION (Price <= Lower NWE Band)";
+         g_lastBlockReason = StringFormat("BOTTOM_EXHAUSTION (Channel Pos %.1f%% < 20%%)", channelPos * 100.0);
          return;
       }
    }
