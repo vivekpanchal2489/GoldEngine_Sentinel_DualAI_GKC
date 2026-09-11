@@ -727,20 +727,7 @@ void GetNextTradeAction(string &nextAction)
       }
    }
    
-   // Check Dual-AI Consensus Readiness
-   bool isConsensusReady = false;
-   if(dir == "BUY" && g_masterValid && g_masterProbBull >= 0.54 && g_masterDelta >= 0.0 && !IsPriceAtTopExhaustion())
-      isConsensusReady = true;
-   else if(dir == "SELL" && g_masterValid && g_masterProbBear >= 0.54 && g_masterDelta <= 0.0 && !IsPriceAtBottomExhaustion())
-      isConsensusReady = true;
-
-   if(isConsensusReady)
-   {
-      nextAction = StringFormat("%s (Dual-AI Consensus Armed)", dir);
-      return;
-   }
-
-   // Check Session Standby & Curfew
+   // 3. Check Session Standby & Curfew
    string zoneBlockReason = "";
    if(!IsZoneTradingAllowed(zoneBlockReason))
    {
@@ -750,30 +737,49 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
 
-   // If Master AI diverges from SuperGRU direction, show telemetry block
+   // 4. Check 3-Boss Alignment: Dual-AI Divergence & Delta Conflict
    if(g_masterValid)
    {
       if(dir == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s Delta %+.1f)",
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s | Delta %+.1f)",
                                    (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s Delta %+.1f)",
+         g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s | Delta %+.1f)",
                                           (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          return;
       }
       else if(dir == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s Delta %+.1f)",
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s | Delta %+.1f)",
                                    (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s Delta %+.1f)",
+         g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s | Delta %+.1f)",
                                           (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          return;
       }
    }
 
-   // Check ONNX Core thresholds (using dynamic settings)
+   // 5. Check NWE Volatility Exhaustion Veto
+   if(InpUseNweEngine)
+   {
+      if(dir == "BUY" && IsPriceAtTopExhaustion())
+      {
+         nextAction = "BLOCKED (NWE Top Exhaustion Veto)";
+         g_lastBlockSource = "NWE_EXHAUSTION";
+         g_lastBlockReason = "TOP_EXHAUSTION (Price >= Upper NWE Band)";
+         return;
+      }
+      else if(dir == "SELL" && IsPriceAtBottomExhaustion())
+      {
+         nextAction = "BLOCKED (NWE Bottom Exhaustion Veto)";
+         g_lastBlockSource = "NWE_EXHAUSTION";
+         g_lastBlockReason = "BOTTOM_EXHAUSTION (Price <= Lower NWE Band)";
+         return;
+      }
+   }
+
+   // 6. Check ONNX Core conviction thresholds (using dynamic settings)
    double activeConf = InpOnnxConfidence;
    double activeMargin = InpOnnxMargin;
    string activeZoneName = "";
@@ -789,7 +795,9 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
    
-   nextAction = StringFormat("%s (Core Trend Ready)", dir);
+   nextAction = StringFormat("%s (Tri-Core Locked & Ready)", dir);
+   g_lastBlockSource = "NONE";
+   g_lastBlockReason = "All Systems Clear (3 Bosses Aligned)";
 }
 
 #endif // GE_ENTRYGATES_MQH
