@@ -49,6 +49,11 @@ input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
 input double InpZone3MaxLot         = 0.10;   // Zone 3 Max Lot (Night Drift Shield: Max 0.10 lots)
 input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
 
+input group "=== Session Execution Controls (IST) ==="
+input bool   InpEnableZone1Trading  = false;  // Enable Trading in Zone 1 (Asian Session: 03:30 AM - 01:30 PM IST) [FALSE = STRICT CURFEW]
+input bool   InpEnableZone2Trading  = true;   // Enable Trading in Zone 2 (London/NY Peak: 01:30 PM - 09:30 PM IST) [TRUE = Free Trading]
+input bool   InpEnableZone3Trading  = true;   // Enable Trading in Zone 3 (Late NY Session: 09:30 PM - 01:30 AM IST) [TRUE = Free Trading]
+
 input group "=== Night Curfew & Bank Rollover Protection (IST) ==="
 input bool   InpUseNightCurfew      = true;   // Enable Night Curfew (No new trades between 01:30 AM and 03:30 AM IST)
 input int    InpCurfewStartHour     = 1;      // Curfew Start Hour (IST, 1:30 AM)
@@ -75,6 +80,67 @@ bool IsNightCurfewActive()
       return true;
 
    return false;
+}
+
+//+------------------------------------------------------------------+
+//| IsZoneTradingAllowed — Check if trading is enabled in current zone|
+//+------------------------------------------------------------------+
+bool IsZoneTradingAllowed(string &zoneBlockedReason)
+{
+   if(!InpUseDynamicScheduler)
+   {
+      zoneBlockedReason = "";
+      return true;
+   }
+
+   MqlDateTime dt;
+   TimeLocal(dt); // System clock (IST)
+   int currentMinutes = dt.hour * 60 + dt.min;
+
+   int curfewStart = InpCurfewStartHour * 60 + InpCurfewStartMin; // 1:30 AM (90 mins)
+   int curfewEnd   = InpCurfewEndHour * 60 + InpCurfewEndMin;     // 3:30 AM (210 mins)
+
+   // 1. Night Rollover Curfew (01:30 AM - 03:30 AM IST)
+   if(InpUseNightCurfew && currentMinutes >= curfewStart && currentMinutes < curfewEnd)
+   {
+      zoneBlockedReason = "NIGHT_CURFEW (01:30 AM - 03:30 AM Rollover Protection)";
+      return false;
+   }
+
+   int z1Minutes = InpZone1StartHour * 60 + InpZone1StartMin; // 03:30 AM (210 mins)
+   int z2Minutes = InpZone2StartHour * 60 + InpZone2StartMin; // 01:30 PM (810 mins)
+   int z3Minutes = InpZone3StartHour * 60 + InpZone3StartMin; // 09:30 PM (1290 mins)
+
+   // 2. Zone 1: Asian Session Strict Curfew (03:30 AM - 01:30 PM IST)
+   if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
+   {
+      if(!InpEnableZone1Trading)
+      {
+         zoneBlockedReason = "ZONE1_ASIAN_CURFEW (03:30 AM - 01:30 PM Asian Standby)";
+         return false;
+      }
+   }
+   // 3. Zone 2: London & NY Peak (01:30 PM - 09:30 PM IST)
+   else if(currentMinutes >= z2Minutes && currentMinutes < z3Minutes)
+   {
+      if(!InpEnableZone2Trading)
+      {
+         zoneBlockedReason = "ZONE2_DISABLED";
+         return false;
+      }
+   }
+   // 4. Zone 3: Late NY Session (09:30 PM - 01:30 AM IST)
+   else
+   {
+      if(!InpEnableZone3Trading)
+      {
+         zoneBlockedReason = "ZONE3_DISABLED";
+         return false;
+      }
+   }
+
+   zoneBlockedReason = "";
+   return true;
 }
 
 //+------------------------------------------------------------------+
