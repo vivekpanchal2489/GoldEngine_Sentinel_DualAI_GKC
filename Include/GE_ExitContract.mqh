@@ -41,6 +41,45 @@ input int    InpMaxHoldMinutes        = 0;      // Max time in position before f
 input double InpExitReversalP         = 0.60;   // ONNX probability that flips a position to opposite side
 input bool   InpExitReversalAllowLoss = true;   // Close LOSING trades on ONNX reversal
 
+input group "=== Delta-Flip Fast Loss Cutter Engine ==="
+input bool   InpUseDeltaFlipExit       = true;   // Enable Order Flow Delta-Flip Early Exit
+input int    InpDeltaFlipBarsRequired  = 2;      // Consecutive M5 Bars with opposing Delta (default: 2 bars)
+input double InpDeltaFlipThreshold     = 4.0;    // Delta magnitude to trigger exit (e.g. >= +4.0 for SELL, <= -4.0 for BUY)
+input bool   InpDeltaFlipOnlyLosing    = true;   // Only apply Delta-Flip exit to losing positions (let winning positions trail)
+
+// Structure to track opposing delta bars per ticket
+struct SDeltaFlipTracker
+{
+   ulong ticket;
+   int   opposingBars;
+};
+
+SDeltaFlipTracker g_deltaFlipTrackers[32];
+int               g_deltaFlipTrackerCount = 0;
+
+void PruneDeltaFlipTrackers()
+{
+   for(int k = g_deltaFlipTrackerCount - 1; k >= 0; k--)
+   {
+      ulong t = g_deltaFlipTrackers[k].ticket;
+      bool exists = false;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         if(PositionGetTicket(i) == t)
+         {
+            exists = true;
+            break;
+         }
+      }
+      if(!exists)
+      {
+         for(int j = k; j < g_deltaFlipTrackerCount - 1; j++)
+            g_deltaFlipTrackers[j] = g_deltaFlipTrackers[j+1];
+         g_deltaFlipTrackerCount--;
+      }
+   }
+}
+
 //+------------------------------------------------------------------+
 //| PriceDistForLoss — convert USD amount into price distance         |
 //+------------------------------------------------------------------+
@@ -79,7 +118,7 @@ public:
 };
 
 //+------------------------------------------------------------------+
-//| CheckExitContract — Time-decay and ONNX reversal-exit             |
+//| CheckExitContract — Time-decay, ONNX & Delta-Flip reversal-exit  |
 //+------------------------------------------------------------------+
 void CheckExitContract(const double onnxBull, const double onnxBear, const bool onnxValid)
 {
@@ -126,7 +165,57 @@ void CheckExitContract(const double onnxBull, const double onnxBear, const bool 
             }
          }
       }
+
+      // (c) Delta-Flip Fast Emergency Exit (Order Flow Loss Cutter)
+      if(InpUseDeltaFlipExit && g_masterValid)
+      {
+         bool isOpposingDelta = false;
+         if(type == POSITION_TYPE_BUY  && g_masterDelta <= -InpDeltaFlipThreshold)
+            isOpposingDelta = true;
+         else if(type == POSITION_TYPE_SELL && g_masterDelta >= InpDeltaFlipThreshold)
+            isOpposingDelta = true;
+
+         int trackerIdx = -1;
+         for(int k = 0; k < g_deltaFlipTrackerCount; k++)
+         {
+            if(g_deltaFlipTrackers[k].ticket == ticket)
+            {
+               trackerIdx = k;
+               break;
+            }
+         }
+
+         if(trackerIdx == -1 && g_deltaFlipTrackerCount < 32)
+         {
+            trackerIdx = g_deltaFlipTrackerCount++;
+            g_deltaFlipTrackers[trackerIdx].ticket = ticket;
+            g_deltaFlipTrackers[trackerIdx].opposingBars = 0;
+         }
+
+         if(trackerIdx >= 0)
+         {
+            if(isOpposingDelta)
+               g_deltaFlipTrackers[trackerIdx].opposingBars++;
+            else
+               g_deltaFlipTrackers[trackerIdx].opposingBars = 0;
+
+            if(g_deltaFlipTrackers[trackerIdx].opposingBars >= InpDeltaFlipBarsRequired)
+            {
+               if(!InpDeltaFlipOnlyLosing || profit < 0.0)
+               {
+                  CTradeSafe trade;
+                  trade.PositionClose(ticket);
+                  PrintFormat("[ExitContract] #%I64u closed on DELTA-FLIP EMERGENCY EXIT (type=%s, delta=%.2f opposing for %d bars, PnL=%.2f USD).",
+                              ticket, (type == POSITION_TYPE_BUY ? "BUY" : "SELL"), g_masterDelta,
+                              g_deltaFlipTrackers[trackerIdx].opposingBars, profit);
+                  continue;
+               }
+            }
+         }
+      }
    }
+
+   PruneDeltaFlipTrackers();
 }
 
 //+------------------------------------------------------------------+

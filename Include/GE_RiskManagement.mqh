@@ -16,6 +16,17 @@
 double g_cachedRegimeTrendProb = 0.5;
 double g_cachedRegimeChopProb  = 0.5;
 
+// Master AI 76 & Order Flow Microstructure Cache
+double   g_masterProbBull       = 0.0;
+double   g_masterProbNeu        = 0.0;
+double   g_masterProbBear       = 0.0;
+bool     g_masterValid          = false;
+double   g_masterDelta          = 0.0;
+double   g_masterDeltaMom       = 0.0;
+double   g_masterLiquiditySweep = 0.0;
+double   g_masterImbalance      = 0.0;
+double   g_masterLargeTrade     = 0.0;
+
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 //| Dynamic Balance Sizing Settings                                  |

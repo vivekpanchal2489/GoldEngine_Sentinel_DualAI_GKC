@@ -168,18 +168,7 @@ double   g_histOnnxBull2     = 0.0;
 double   g_histOnnxBear2     = 0.0;
 bool     g_histOnnxValid2    = false;
 
-//+------------------------------------------------------------------+
-//| Cached ONNX Brain 2 (Master AI 76 + Microstructure + Order Flow) |
-//+------------------------------------------------------------------+
-double   g_masterProbBull       = 0.0;
-double   g_masterProbNeu        = 0.0;
-double   g_masterProbBear       = 0.0;
-bool     g_masterValid          = false;
-double   g_masterDelta          = 0.0;
-double   g_masterDeltaMom       = 0.0;
-double   g_masterLiquiditySweep = 0.0; // +1.0 = sweep high (bearish), -1.0 = sweep low (bullish)
-double   g_masterImbalance      = 0.0;
-double   g_masterLargeTrade     = 0.0;
+// Note: Master AI & Order Flow variables (g_masterDelta, etc.) declared in GE_RiskManagement.mqh
 
 //+------------------------------------------------------------------+
 //| Live regime/ADX/RSI cache                                        |
