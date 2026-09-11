@@ -286,117 +286,127 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   //=== GATE 1: ONNX directional agreement (Fail-Closed) ===
-   bool isReversalSniper = (strategySource == "NWE_REVERSAL" || strategySource == "TURTLE_SOUP_SWEEP");
-
-   if(!isReversalSniper)
+   //=== GATE 1: THE UNIVERSAL TRI-CORE SUPREME COUNCIL GATE ===
+   // Boss 1: SuperGRU 76 (Macro Trend & Momentum)
+   // Boss 2: Master AI 76 (Microstructure Classifier)
+   // Boss 3: Order Flow Delta (Institutional Aggression)
+   // Guard 1: Absorption / Rejection Wick Filter
+   // Guard 2: NWE Volatility Anti-Overextension Band
+   if(!g_cachedOnnxValid)
    {
-      if(!g_cachedOnnxValid)
+      rec.result       = "BLOCKED";
+      rec.block_reason = "ONNX_INVALID";
+      LogTradeAttempt(rec);
+      return false;
+   }
+
+   // 1. BOSS 1: SuperGRU Directional Conviction & Symmetrical Margin
+   double dirProb = (direction == "BUY" ? g_cachedOnnxBull : g_cachedOnnxBear);
+   double oppProb = (direction == "BUY" ? g_cachedOnnxBear : g_cachedOnnxBull);
+   double margin  = MathAbs(g_cachedOnnxBull - g_cachedOnnxBear);
+
+   double activeConf = InpOnnxConfidence;
+   double activeMargin = InpOnnxMargin;
+   string activeZoneName = "";
+   string activeZoneSched = "";
+   GetActiveConvictionSettings(activeConf, activeMargin, activeZoneName, activeZoneSched);
+
+   if(dirProb < InpStrategyOnnxMinProb || dirProb <= oppProb || margin < activeMargin)
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "SUPERGRU_DISAGREEMENT";
+      rec.ai_reason_text = StringFormat("SuperGRU %s %.3f < %.3f min or Margin %.3f < %.3f (%s)",
+                                        direction, dirProb, InpStrategyOnnxMinProb, margin, activeMargin, activeZoneName);
+      LogTradeAttempt(rec);
+      return false;
+   }
+
+   // 2. BOSS 2: Master AI Microstructure Confirmation
+   if(g_masterValid)
+   {
+      double masterDirProb = (direction == "BUY" ? g_masterProbBull : g_masterProbBear);
+      double masterOppProb = (direction == "BUY" ? g_masterProbBear : g_masterProbBull);
+      if(masterDirProb < 0.50 || masterDirProb <= masterOppProb)
       {
          rec.result       = "BLOCKED";
-         rec.block_reason = "ONNX_INVALID";
+         rec.block_reason = "DUAL_AI_DIVERGENCE";
+         rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.50",
+                                           direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb);
          LogTradeAttempt(rec);
          return false;
       }
+   }
 
-      double activeConf = InpOnnxConfidence;
-      double activeMargin = InpOnnxMargin;
-      string activeZoneName = "";
-      string activeZoneSched = "";
-      GetActiveConvictionSettings(activeConf, activeMargin, activeZoneName, activeZoneSched);
-
-      if(strategySource == "ONNX_CORE")
-      {
-         double dirProb = (direction == "BUY" ? g_cachedOnnxBull : g_cachedOnnxBear);
-         double margin  = MathAbs(g_cachedOnnxBull - g_cachedOnnxBear);
-         if(dirProb < activeConf || margin < activeMargin)
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "ONNX_CORE_LOW_CONVICTION";
-            rec.ai_reason_text = StringFormat("Prob %.3f < %.3f or Margin %.3f < %.3f (%s)", 
-                                              dirProb, activeConf, margin, activeMargin, activeZoneName);
-            LogTradeAttempt(rec);
-            return false;
-         }
-
-         // DUAL-AI SYMMETRICAL LOCK: Master AI & Delta confirmation
-         if(g_masterValid)
-         {
-            if(direction == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
-            {
-               rec.result       = "BLOCKED";
-               rec.block_reason = "DUAL_AI_DIVERGENCE";
-               rec.ai_reason_text = StringFormat("SuperGRU Bullish %.3f blocked: Master AI Bull %.3f < 0.50 or Delta %.2f < 0",
-                                                 g_cachedOnnxBull, g_masterProbBull, g_masterDelta);
-               LogTradeAttempt(rec);
-               return false;
-            }
-            else if(direction == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
-            {
-               rec.result       = "BLOCKED";
-               rec.block_reason = "DUAL_AI_DIVERGENCE";
-               rec.ai_reason_text = StringFormat("SuperGRU Bearish %.3f blocked: Master AI Bear %.3f < 0.50 or Delta %.2f > 0",
-                                                 g_cachedOnnxBear, g_masterProbBear, g_masterDelta);
-               LogTradeAttempt(rec);
-               return false;
-            }
-         }
-
-         // CANDLE DIRECTION & ABSORPTION WICK FILTER
-         double open1  = iOpen(_Symbol, _Period, 1);
-         double close1 = iClose(_Symbol, _Period, 1);
-         double high1  = iHigh(_Symbol, _Period, 1);
-         double low1   = iLow(_Symbol, _Period, 1);
-         double range1 = MathMax(high1 - low1, 1e-8);
-         double loWick1 = (MathMin(open1, close1) - low1) / range1;
-         double upWick1 = (high1 - MathMax(open1, close1)) / range1;
-
-         // For BUY: Do not buy into a solid falling red bar unless it has a >= 20% lower rejection wick
-         if(direction == "BUY" && close1 < open1 && loWick1 < 0.20)
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
-            rec.ai_reason_text = StringFormat("Red Bar (Close %.2f < Open %.2f) without lower absorption wick (%.1f%% < 20%%)",
-                                              close1, open1, loWick1 * 100.0);
-            LogTradeAttempt(rec);
-            return false;
-         }
-         // For SELL: Do not sell into a solid rising green bar unless it has a >= 20% upper rejection wick
-         else if(direction == "SELL" && close1 > open1 && upWick1 < 0.20)
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
-            rec.ai_reason_text = StringFormat("Green Bar (Close %.2f > Open %.2f) without upper absorption wick (%.1f%% < 20%%)",
-                                              close1, open1, upWick1 * 100.0);
-            LogTradeAttempt(rec);
-            return false;
-         }
-      }
-      else if(strategySource == "SUPER_TREND_CONSENSUS")
-      {
-         double dirProb = (direction == "BUY" ? g_cachedOnnxBull : g_cachedOnnxBear);
-         if(dirProb < InpStrategyOnnxMinProb)
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "STRATEGY_ONNX_MIN_PROB";
-            rec.ai_reason_text = StringFormat("SuperGRU Prob %.3f < %.3f min for consensus", dirProb, InpStrategyOnnxMinProb);
-            LogTradeAttempt(rec);
-            return false;
-         }
-      }
-
-      // Agreement check
-      if(direction == "BUY" && g_cachedOnnxBull <= g_cachedOnnxBear)
+   // 3. BOSS 3: Order Flow Delta Institutional Alignment
+   if(g_masterValid)
+   {
+      if(direction == "BUY" && g_masterDelta < 0.0)
       {
          rec.result       = "BLOCKED";
-         rec.block_reason = "ONNX_DISAGREEMENT";
+         rec.block_reason = "DELTA_CONFLICT";
+         rec.ai_reason_text = StringFormat("BUY blocked: Opposing Order Flow Delta %.2f < 0", g_masterDelta);
          LogTradeAttempt(rec);
          return false;
       }
-      if(direction == "SELL" && g_cachedOnnxBear <= g_cachedOnnxBull)
+      else if(direction == "SELL" && g_masterDelta > 0.0)
       {
          rec.result       = "BLOCKED";
-         rec.block_reason = "ONNX_DISAGREEMENT";
+         rec.block_reason = "DELTA_CONFLICT";
+         rec.ai_reason_text = StringFormat("SELL blocked: Opposing Order Flow Delta %.2f > 0", g_masterDelta);
+         LogTradeAttempt(rec);
+         return false;
+      }
+   }
+
+   // 4. GUARD 1: Candle Direction & Absorption Wick Filter
+   double open1   = iOpen(_Symbol, _Period, 1);
+   double close1  = iClose(_Symbol, _Period, 1);
+   double high1   = iHigh(_Symbol, _Period, 1);
+   double low1    = iLow(_Symbol, _Period, 1);
+   double range1  = MathMax(high1 - low1, 1e-8);
+   double loWick1 = (MathMin(open1, close1) - low1) / range1;
+   double upWick1 = (high1 - MathMax(open1, close1)) / range1;
+
+   // For BUY: Do not buy into a solid falling red bar unless it has a >= 20% lower rejection wick
+   if(direction == "BUY" && close1 < open1 && loWick1 < 0.20)
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
+      rec.ai_reason_text = StringFormat("Red Bar (Close %.2f < Open %.2f) without lower absorption wick (%.1f%% < 20%%)",
+                                        close1, open1, loWick1 * 100.0);
+      LogTradeAttempt(rec);
+      return false;
+   }
+   // For SELL: Do not sell into a solid rising green bar unless it has a >= 20% upper rejection wick
+   else if(direction == "SELL" && close1 > open1 && upWick1 < 0.20)
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
+      rec.ai_reason_text = StringFormat("Green Bar (Close %.2f > Open %.2f) without upper absorption wick (%.1f%% < 20%%)",
+                                        close1, open1, upWick1 * 100.0);
+      LogTradeAttempt(rec);
+      return false;
+   }
+
+   // 5. GUARD 2: NWE Volatility Anti-Overextension Guard (Universal Boundary)
+   if(InpUseNweEngine && g_nweMAE > 0.0)
+   {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+      if(direction == "BUY" && ask >= g_nweUpperBand)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "NWE_OVEREXTENSION";
+         rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f at Upper NWE Band %.2f (Exhaustion Top)", ask, g_nweUpperBand);
+         LogTradeAttempt(rec);
+         return false;
+      }
+      else if(direction == "SELL" && bid <= g_nweLowerBand)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "NWE_OVEREXTENSION";
+         rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f at Lower NWE Band %.2f (Exhaustion Bottom)", bid, g_nweLowerBand);
          LogTradeAttempt(rec);
          return false;
       }
@@ -509,7 +519,7 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    }
 
    //=== GATE 6: Nadaraya-Watson Statistical Exhaustion Veto (Anti-Top-Buy / Anti-Bottom-Sell) ===
-   if(InpUseNweEngine && InpUseNweExhaustionVeto && !isReversalSniper)
+   if(InpUseNweEngine && InpUseNweExhaustionVeto)
    {
       if(direction == "BUY" && IsPriceAtTopExhaustion())
       {

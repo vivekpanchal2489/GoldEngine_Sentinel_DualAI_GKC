@@ -797,22 +797,20 @@ void DispatchEnabledStrategies()
    //===================================================================
    if(InpUseSuperTrendConsensus && g_cachedOnnxValid && g_masterValid)
    {
-      // BUY Consensus: SuperGRU Bullish >= 51.5% + Master AI Bullish >= 54% + Positive Delta + Not at top exhaustion
       if(g_cachedOnnxBull >= InpStrategyOnnxMinProb && g_cachedOnnxBull > g_cachedOnnxBear &&
-         g_masterProbBull >= 0.54 && g_masterDelta >= 0.0 && !IsPriceAtTopExhaustion())
+         g_masterProbBull >= 0.50 && g_masterDelta >= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "BUY")) return;
       }
-      // SELL Consensus: SuperGRU Bearish >= 51.5% + Master AI Bearish >= 54% + Negative Delta + Not at bottom exhaustion
       else if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
-              g_masterProbBear >= 0.54 && g_masterDelta <= 0.0 && !IsPriceAtBottomExhaustion())
+              g_masterProbBear >= 0.50 && g_masterDelta <= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "SELL")) return;
       }
    }
 
    //===================================================================
-   // SETUP B: TURTLE_SOUP_SWEEP (ICT Liquidity Sweep Reversal)
+   // SETUP B: TURTLE_SOUP_SWEEP (ICT Liquidity Sweep - Tri-Core Verified)
    //===================================================================
    if(InpUseTurtleSoupSweep && g_masterValid && g_nweMAE > 0.0)
    {
@@ -829,44 +827,21 @@ void DispatchEnabledStrategies()
    }
 
    //===================================================================
-   // SETUP C: NWE_REVERSAL_SNIPER (Nadaraya-Watson 3.0xMAE Extreme Boundary Reversal)
+   // SETUP C: NWE_REVERSAL_SNIPER -> Converted to Universal Boundary Guard (Zero Standalone Orders)
    //===================================================================
-   if(InpUseNweReversalSniper && InpUseNweEngine && g_nweMAE > 0.0)
-   {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-
-      if(ask >= g_nweUpperBand)
-      {
-         if(AttemptTradePlacement("NWE_REVERSAL", "SELL")) return;
-      }
-      else if(bid <= g_nweLowerBand)
-      {
-         if(AttemptTradePlacement("NWE_REVERSAL", "BUY")) return;
-      }
-   }
 
    //===================================================================
-   // SETUP D: ONNX_CORE (SuperGRU 76 Core Direction Engine - Dual-AI Locked)
+   // SETUP D: ONNX_CORE (SuperGRU 76 Core Direction Engine - Universal Tri-Core Locked)
    //===================================================================
    if(InpUseSuperGruCoreTrend && g_cachedOnnxValid)
    {
-      // Symmetrical Dual-AI Lock:
-      // BUY requires SuperGRU Bull > Bear AND (if Master AI is active, Master AI Bull >= 0.50 AND Delta >= 0.0)
       if(g_cachedOnnxBull > g_cachedOnnxBear)
       {
-         if(!g_masterValid || (g_masterProbBull >= 0.50 && g_masterDelta >= 0.0))
-         {
-            AttemptTradePlacement("ONNX_CORE", "BUY");
-         }
+         AttemptTradePlacement("ONNX_CORE", "BUY");
       }
-      // SELL requires SuperGRU Bear > Bull AND (if Master AI is active, Master AI Bear >= 0.50 AND Delta <= 0.0)
       else if(g_cachedOnnxBear > g_cachedOnnxBull)
       {
-         if(!g_masterValid || (g_masterProbBear >= 0.50 && g_masterDelta <= 0.0))
-         {
-            AttemptTradePlacement("ONNX_CORE", "SELL");
-         }
+         AttemptTradePlacement("ONNX_CORE", "SELL");
       }
    }
 }
