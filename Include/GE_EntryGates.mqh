@@ -264,12 +264,13 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   //=== GATE 0.5: Dynamic Night Curfew Gate (01:30 AM to 03:30 AM IST) ===
-   if(IsNightCurfewActive())
+   //=== GATE 0.5: Dynamic Session Standby & Curfew Gate ===
+   string zoneBlockReason = "";
+   if(!IsZoneTradingAllowed(zoneBlockReason))
    {
       rec.result       = "BLOCKED";
-      rec.block_reason = "NIGHT_CURFEW";
-      rec.ai_reason_text = "Night Curfew Active (01:30 AM - 03:30 AM IST Rollover Protection) - No New Trades";
+      rec.block_reason = "SESSION_STANDBY";
+      rec.ai_reason_text = zoneBlockReason;
       LogTradeAttempt(rec);
       return false;
    }
@@ -737,12 +738,13 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
 
-   // Check Night Curfew
-   if(IsNightCurfewActive())
+   // Check Session Standby & Curfew
+   string zoneBlockReason = "";
+   if(!IsZoneTradingAllowed(zoneBlockReason))
    {
-      nextAction = "BLOCKED (Curfew Active - No New Trades)";
-      g_lastBlockSource = "NIGHT_CURFEW";
-      g_lastBlockReason = "CURFEW_ACTIVE (01:30 AM - 03:30 AM Rollover Protection)";
+      nextAction = StringFormat("BLOCKED (%s)", zoneBlockReason);
+      g_lastBlockSource = "SESSION_STANDBY";
+      g_lastBlockReason = zoneBlockReason;
       return;
    }
 
