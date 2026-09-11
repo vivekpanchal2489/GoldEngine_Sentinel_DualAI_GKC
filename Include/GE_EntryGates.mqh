@@ -336,30 +336,28 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
          return false;
       }
 
-      // UNIVERSAL DUAL-AI SYMMETRICAL LOCK: Master AI & Delta confirmation
+      // ORDER FLOW DELTA SHIELD (Protects against trading into heavy opposing institutional volume)
       if(g_masterValid)
       {
-         if(direction == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
+         if(direction == "BUY" && g_masterDelta <= -3.0)
          {
             rec.result       = "BLOCKED";
-            rec.block_reason = "DUAL_AI_DIVERGENCE";
-            rec.ai_reason_text = StringFormat("SuperGRU Bullish %.3f blocked: Master AI Bull %.3f < 0.50 or Delta %.2f < 0",
-                                              g_cachedOnnxBull, g_masterProbBull, g_masterDelta);
+            rec.block_reason = "ORDER_FLOW_CONFLICT";
+            rec.ai_reason_text = StringFormat("Blocked BUY: Heavy Seller Delta (%.2f <= -3.0)", g_masterDelta);
             LogTradeAttempt(rec);
             return false;
          }
-         else if(direction == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
+         else if(direction == "SELL" && g_masterDelta >= 3.0)
          {
             rec.result       = "BLOCKED";
-            rec.block_reason = "DUAL_AI_DIVERGENCE";
-            rec.ai_reason_text = StringFormat("SuperGRU Bearish %.3f blocked: Master AI Bear %.3f < 0.50 or Delta %.2f > 0",
-                                              g_cachedOnnxBear, g_masterProbBear, g_masterDelta);
+            rec.block_reason = "ORDER_FLOW_CONFLICT";
+            rec.ai_reason_text = StringFormat("Blocked SELL: Heavy Buyer Delta (%.2f >= +3.0)", g_masterDelta);
             LogTradeAttempt(rec);
             return false;
          }
       }
 
-      // UNIVERSAL GKC TOP/BOTTOM EXHAUSTION VETO
+      // UNIVERSAL GKC TOP/BOTTOM EXHAUSTION VETO (100% Prevents Selling Floor or Buying Ceiling)
       if(InpUseNweEngine && InpUseNweExhaustionVeto && g_nweMAE > 0.0)
       {
          if(direction == "BUY" && IsPriceAtTopExhaustion())
@@ -382,54 +380,29 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
          }
       }
 
-      // UNIVERSAL 20 EMA OVEREXTENSION FILTER (Anti-Deep Dump/Pump Chaser)
-      double ema20 = DashMA(20, 1);
-      double atr14 = DashATR(1);
-      double close1 = iClose(_Symbol, _Period, 1);
+      // CANDLE ABSORPTION WICK FILTER
       double open1  = iOpen(_Symbol, _Period, 1);
+      double close1 = iClose(_Symbol, _Period, 1);
       double high1  = iHigh(_Symbol, _Period, 1);
       double low1   = iLow(_Symbol, _Period, 1);
       double range1 = MathMax(high1 - low1, 1e-8);
       double loWick1 = (MathMin(open1, close1) - low1) / range1;
       double upWick1 = (high1 - MathMax(open1, close1)) / range1;
 
-      if(ema20 > 0.0 && atr14 > 0.0)
-      {
-         if(direction == "SELL" && close1 < (ema20 - 1.5 * atr14))
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "EMA_OVEREXTENSION_DEEP";
-            rec.ai_reason_text = StringFormat("Price %.2f is dumped %.2f pts below 20 EMA (%.2f, limit: %.2f) — Waiting for pullback",
-                                              close1, (ema20 - close1), ema20, 1.5 * atr14);
-            LogTradeAttempt(rec);
-            return false;
-         }
-         else if(direction == "BUY" && close1 > (ema20 + 1.5 * atr14))
-         {
-            rec.result       = "BLOCKED";
-            rec.block_reason = "EMA_OVEREXTENSION_HIGH";
-            rec.ai_reason_text = StringFormat("Price %.2f is pumped %.2f pts above 20 EMA (%.2f, limit: %.2f) — Waiting for pullback",
-                                              close1, (close1 - ema20), ema20, 1.5 * atr14);
-            LogTradeAttempt(rec);
-            return false;
-         }
-      }
-
-      // UNIVERSAL CANDLE DIRECTION & ABSORPTION WICK FILTER
-      if(direction == "BUY" && close1 < open1 && loWick1 < 0.20)
+      if(direction == "BUY" && close1 < open1 && loWick1 < 0.15)
       {
          rec.result       = "BLOCKED";
          rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
-         rec.ai_reason_text = StringFormat("Red Bar (Close %.2f < Open %.2f) without lower absorption wick (%.1f%% < 20%%)",
+         rec.ai_reason_text = StringFormat("Red Bar (Close %.2f < Open %.2f) without lower absorption wick (%.1f%% < 15%%)",
                                            close1, open1, loWick1 * 100.0);
          LogTradeAttempt(rec);
          return false;
       }
-      else if(direction == "SELL" && close1 > open1 && upWick1 < 0.20)
+      else if(direction == "SELL" && close1 > open1 && upWick1 < 0.15)
       {
          rec.result       = "BLOCKED";
          rec.block_reason = "CANDLE_MOMENTUM_CONFLICT";
-         rec.ai_reason_text = StringFormat("Green Bar (Close %.2f > Open %.2f) without upper absorption wick (%.1f%% < 20%%)",
+         rec.ai_reason_text = StringFormat("Green Bar (Close %.2f > Open %.2f) without upper absorption wick (%.1f%% < 15%%)",
                                            close1, open1, upWick1 * 100.0);
          LogTradeAttempt(rec);
          return false;
@@ -773,25 +746,21 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
 
-   // If Master AI diverges from SuperGRU direction, show telemetry block
+   // Order Flow Delta Shield Telemetry
    if(g_masterValid)
    {
-      if(dir == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
+      if(dir == "BUY" && g_masterDelta <= -3.0)
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
-         g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s Delta %+.1f)",
-                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         nextAction = StringFormat("BLOCKED (Heavy Seller Delta: %+.1f)", g_masterDelta);
+         g_lastBlockSource = "ORDER_FLOW";
+         g_lastBlockReason = StringFormat("HEAVY_SELLER_FLOW (Delta %+.1f <= -3.0)", g_masterDelta);
          return;
       }
-      else if(dir == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
+      else if(dir == "SELL" && g_masterDelta >= 3.0)
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
-         g_lastBlockSource = "DUAL_AI";
-         g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s Delta %+.1f)",
-                                          (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         nextAction = StringFormat("BLOCKED (Heavy Buyer Delta: %+.1f)", g_masterDelta);
+         g_lastBlockSource = "ORDER_FLOW";
+         g_lastBlockReason = StringFormat("HEAVY_BUYER_FLOW (Delta %+.1f >= +3.0)", g_masterDelta);
          return;
       }
    }

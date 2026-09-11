@@ -146,21 +146,22 @@ void CheckExitContract(const double onnxBull, const double onnxBear, const bool 
          }
       }
 
-      // (b) ONNX reversal-exit
+      // (b) ONNX reversal-exit (Requires at least 15 mins / 3 bars age to give fresh reversals room to breathe)
       if(onnxValid)
       {
+         int heldMins = (int)((TimeCurrent() - openTime) / 60);
          bool flipCondition = false;
          if(type == POSITION_TYPE_BUY  && onnxBear >= InpExitReversalP) flipCondition = true;
          if(type == POSITION_TYPE_SELL && onnxBull >= InpExitReversalP) flipCondition = true;
 
-         if(flipCondition)
+         if(flipCondition && (heldMins >= 15 || profit > 0.0))
          {
             if(profit > 0.0 || InpExitReversalAllowLoss)
             {
                CTradeSafe trade;
                trade.PositionClose(ticket);
-               PrintFormat("[ExitContract] #%I64u closed on ONNX reversal (type=%s, bull=%.3f, bear=%.3f, PnL=%.2f).",
-                           ticket, (type == POSITION_TYPE_BUY ? "BUY" : "SELL"), onnxBull, onnxBear, profit);
+               PrintFormat("[ExitContract] #%I64u closed on ONNX reversal (type=%s, held=%d mins, bull=%.3f, bear=%.3f, PnL=%.2f).",
+                           ticket, (type == POSITION_TYPE_BUY ? "BUY" : "SELL"), heldMins, onnxBull, onnxBear, profit);
                continue;
             }
          }
