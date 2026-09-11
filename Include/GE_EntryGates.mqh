@@ -321,17 +321,17 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   // 2. BOSS 2: Master AI Microstructure Confirmation
+   // 2. BOSS 2: Master AI Microstructure Confirmation (Directional Dominance >= 47.5%)
    if(g_masterValid)
    {
       double masterDirProb = (direction == "BUY" ? g_masterProbBull : g_masterProbBear);
       double masterOppProb = (direction == "BUY" ? g_masterProbBear : g_masterProbBull);
-      if(masterDirProb < 0.50 || masterDirProb <= masterOppProb)
+      if(masterDirProb < 0.475 || masterDirProb <= masterOppProb)
       {
          rec.result       = "BLOCKED";
          rec.block_reason = "DUAL_AI_DIVERGENCE";
-         rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.50",
-                                           direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb);
+         rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.475 or <= Opposing %.3f",
+                                           direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb, masterOppProb);
          LogTradeAttempt(rec);
          return false;
       }
@@ -740,19 +740,19 @@ void GetNextTradeAction(string &nextAction)
    // 4. Check 3-Boss Alignment: Dual-AI Divergence & Delta Conflict
    if(g_masterValid)
    {
-      if(dir == "BUY" && (g_masterProbBull < 0.50 || g_masterDelta < 0.0))
+      if(dir == "BUY" && (g_masterProbBull < 0.475 || g_masterProbBull <= g_masterProbBear || g_masterDelta < 0.0))
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s | Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s %.1f%% | Delta %+.1f)",
+                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterDelta);
          g_lastBlockSource = "DUAL_AI";
          g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s | Delta %+.1f)",
                                           (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
          return;
       }
-      else if(dir == "SELL" && (g_masterProbBear < 0.50 || g_masterDelta > 0.0))
+      else if(dir == "SELL" && (g_masterProbBear < 0.475 || g_masterProbBear <= g_masterProbBull || g_masterDelta > 0.0))
       {
-         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s | Delta %+.1f)",
-                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);
+         nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s %.1f%% | Delta %+.1f)",
+                                   (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterDelta);
          g_lastBlockSource = "DUAL_AI";
          g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s | Delta %+.1f)",
                                           (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterDelta);

@@ -798,12 +798,12 @@ void DispatchEnabledStrategies()
    if(InpUseSuperTrendConsensus && g_cachedOnnxValid && g_masterValid)
    {
       if(g_cachedOnnxBull >= InpStrategyOnnxMinProb && g_cachedOnnxBull > g_cachedOnnxBear &&
-         g_masterProbBull >= 0.50 && g_masterDelta >= 0.0)
+         g_masterProbBull >= 0.475 && g_masterProbBull > g_masterProbBear && g_masterDelta >= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "BUY")) return;
       }
       else if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
-              g_masterProbBear >= 0.50 && g_masterDelta <= 0.0)
+              g_masterProbBear >= 0.475 && g_masterProbBear > g_masterProbBull && g_masterDelta <= 0.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "SELL")) return;
       }
