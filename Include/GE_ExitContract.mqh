@@ -38,8 +38,9 @@ input double InpFixedRiskUSD          = 25.0;   // FIXED loss per trade in accou
 input double InpExitSLDistUSD         = 20.0;   // Reference SL distance used for lot-sizing math
 input double InpExitTPDistUSD         = 50.0;   // Take-profit distance in USD
 input int    InpMaxHoldMinutes        = 0;      // Max time in position before forced close (0 = DISABLED)
+input bool   InpExitOnReversal        = false;  // ONNX AI Reversal Exit (0 = DISABLED, rely strictly on Step-Ladder & Hard SL)
 input double InpExitReversalP         = 0.60;   // ONNX probability that flips a position to opposite side
-input bool   InpExitReversalAllowLoss = true;   // Close LOSING trades on ONNX reversal
+input bool   InpExitReversalAllowLoss = false;  // Close LOSING trades on ONNX reversal (FALSE = DISABLED)
 
 //+------------------------------------------------------------------+
 //| PriceDistForLoss — convert USD amount into price distance         |
@@ -108,7 +109,7 @@ void CheckExitContract(const double onnxBull, const double onnxBear, const bool 
       }
 
       // (b) ONNX reversal-exit
-      if(onnxValid)
+      if(InpExitOnReversal && onnxValid)
       {
          bool flipCondition = false;
          if(type == POSITION_TYPE_BUY  && onnxBear >= InpExitReversalP) flipCondition = true;
