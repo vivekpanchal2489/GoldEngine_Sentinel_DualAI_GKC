@@ -50,7 +50,7 @@ input double InpZone3MaxLot         = 0.10;   // Zone 3 Max Lot (Night Drift Shi
 input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
 
 input group "=== Session Execution Controls (IST) ==="
-input bool   InpEnableZone1Trading  = false;  // Enable Trading in Zone 1 (Asian Session: 03:30 AM - 01:30 PM IST) [FALSE = STRICT CURFEW]
+input bool   InpEnableZone1Trading  = true;   // Enable Trading in Zone 1 (Asian Session: 03:30 AM - 01:30 PM IST) [TRUE = Free Trading]
 input bool   InpEnableZone2Trading  = true;   // Enable Trading in Zone 2 (London/NY Peak: 01:30 PM - 09:30 PM IST) [TRUE = Free Trading]
 input bool   InpEnableZone3Trading  = true;   // Enable Trading in Zone 3 (Late NY Session: 09:30 PM - 01:30 AM IST) [TRUE = Free Trading]
 
