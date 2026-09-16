@@ -253,11 +253,22 @@ public:
       features[3] = (float)(cum_delta_12 / (atr + EPS));               // 3: of_cumulative_delta_12
       features[4] = (float)((cum_delta_12 - cum_delta_12_s3) / (atr + EPS)); // 4: of_delta_momentum
 
-      // Dual-Horizon Percentage Deltas (-100.0% to +100.0%)
+      // Dual-Horizon Percentage Deltas with Exponential Recency Decay (-100.0% to +100.0%)
       double sum_d3 = 0.0, sum_v3 = 0.0;
-      for(int k = 0; k < 3; k++) { sum_d3 += deltas[k]; sum_v3 += bar_vols[k]; }
+      for(int k = 0; k < 3; k++)
+      {
+         double w3 = MathExp(-0.40 * k);
+         sum_d3 += deltas[k] * w3;
+         sum_v3 += bar_vols[k] * w3;
+      }
+
       double sum_d12 = 0.0, sum_v12 = 0.0;
-      for(int k = 0; k < 12; k++) { sum_d12 += deltas[k]; sum_v12 += bar_vols[k]; }
+      for(int k = 0; k < 12; k++)
+      {
+         double w12 = MathExp(-0.25 * k);
+         sum_d12 += deltas[k] * w12;
+         sum_v12 += bar_vols[k] * w12;
+      }
 
       m_lastFastDelta3Pct   = (sum_v3 > 0.0) ? (sum_d3 / sum_v3) * 100.0 : 0.0;
       m_lastMacroDelta12Pct = (sum_v12 > 0.0) ? (sum_d12 / sum_v12) * 100.0 : 0.0;

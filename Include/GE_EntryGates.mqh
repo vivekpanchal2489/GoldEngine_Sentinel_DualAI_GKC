@@ -336,14 +336,34 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    string activeZoneSched = "";
    GetActiveConvictionSettings(activeConf, activeMargin, activeZoneName, activeZoneSched);
 
-   if(dirProb < InpStrategyOnnxMinProb || dirProb <= oppProb || margin < activeMargin)
+   bool isReversalSetup = (strategySource == "TURTLE_SOUP_SWEEP" || strategySource == "NWE_REVERSAL_SNIPER");
+   bool isStrongAdxTrend = (g_cachedAdx >= InpRegimeADXThreshold);
+   double effectiveMargin = isStrongAdxTrend ? (activeMargin * 0.70) : activeMargin;
+
+   if(!isReversalSetup)
    {
-      rec.result       = "BLOCKED";
-      rec.block_reason = "SUPERGRU_DISAGREEMENT";
-      rec.ai_reason_text = StringFormat("SuperGRU %s %.3f < %.3f min or Margin %.3f < %.3f (%s)",
-                                        direction, dirProb, InpStrategyOnnxMinProb, margin, activeMargin, activeZoneName);
-      LogTradeAttempt(rec);
-      return false;
+      if(dirProb < InpStrategyOnnxMinProb || dirProb <= oppProb || margin < effectiveMargin)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "SUPERGRU_DISAGREEMENT";
+         rec.ai_reason_text = StringFormat("SuperGRU %s %.3f < %.3f min or Margin %.3f < %.3f (%s)",
+                                           direction, dirProb, InpStrategyOnnxMinProb, margin, effectiveMargin, activeZoneName);
+         LogTradeAttempt(rec);
+         return false;
+      }
+   }
+   else
+   {
+      // Reversal sniper requires only non-conflicting SuperGRU (>= 45.0%)
+      if(oppProb >= 0.65 && margin >= 0.25)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "SUPERGRU_DISAGREEMENT";
+         rec.ai_reason_text = StringFormat("SuperGRU Extreme Counter-Conviction (%s %.3f vs %s %.3f)",
+                                           (direction == "BUY" ? "Bear" : "Bull"), oppProb, direction, dirProb);
+         LogTradeAttempt(rec);
+         return false;
+      }
    }
 
    bool strongGruTrend = (dirProb >= 0.60 && margin >= 0.15);
@@ -354,10 +374,11 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       double masterDirProb = (direction == "BUY" ? g_masterProbBull : g_masterProbBear);
       double masterOppProb = (direction == "BUY" ? g_masterProbBear : g_masterProbBull);
       double masterMargin  = MathAbs(masterDirProb - masterOppProb);
+      double requiredMasterMargin = isStrongAdxTrend ? 0.05 : 0.10;
 
-      if(strongGruTrend)
+      if(strongGruTrend || isReversalSetup)
       {
-         // In a strong macro trend run, Master AI only blocks if opposing conviction is extreme (>= 65% with >= 20% margin)
+         // In a strong macro trend or verified reversal setup, Master AI only blocks if opposing conviction is extreme
          if(masterOppProb >= 0.65 && masterMargin >= 0.20)
          {
             rec.result       = "BLOCKED";
@@ -370,13 +391,13 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       }
       else
       {
-         // Symmetrical directional dominance requirement in normal/balanced market conditions: >= 55% with >= 10% margin lead
-         if(masterDirProb < 0.55 || masterMargin < 0.10 || masterDirProb <= masterOppProb)
+         // Symmetrical directional dominance in normal balanced conditions
+         if(masterDirProb < 0.55 || masterMargin < requiredMasterMargin || masterDirProb <= masterOppProb)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "DUAL_AI_DIVERGENCE";
-            rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.55 or Margin %.3f < 0.10",
-                                              direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb, masterMargin);
+            rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.55 or Margin %.3f < %.2f",
+                                              direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb, masterMargin, requiredMasterMargin);
             LogTradeAttempt(rec);
             return false;
          }
@@ -386,9 +407,30 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    // 3. BOSS 3: Dual-Horizon Order Flow Delta Institutional Alignment (Filtered for Noise)
    if(g_masterValid)
    {
-      if(direction == "BUY")
+      if(isReversalSetup)
       {
-         // Block BUY if macro delta is strongly negative (selling momentum < -6%)
+         // Reversal setups (Turtle Soup & NWE Sniper) are specifically designed to fade pumps/dumps at extremes.
+         // They are exempt from 60m macro delta lag, but blocked if fast 15m delta is an extreme freight train (> 25%).
+         if(direction == "BUY" && g_masterFastDelta3Pct < -25.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "FAST_DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("BUY Reversal blocked: Extreme Fast Selling Pressure (%+.1f%% < -25.0%%)", g_masterFastDelta3Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         else if(direction == "SELL" && g_masterFastDelta3Pct > 25.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "FAST_DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("SELL Reversal blocked: Extreme Fast Buyer Absorption (%+.1f%% > +25.0%%)", g_masterFastDelta3Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+      }
+      else if(direction == "BUY")
+      {
+         // Block Trend BUY if macro delta is strongly negative (selling momentum < -6%)
          if(g_masterMacroDelta12Pct < -6.0)
          {
             rec.result       = "BLOCKED";
@@ -418,7 +460,7 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       }
       else if(direction == "SELL")
       {
-         // Block SELL if macro delta is strongly positive (buying momentum > +6%)
+         // Block Trend SELL if macro delta is strongly positive (buying momentum > +6%)
          if(g_masterMacroDelta12Pct > 6.0)
          {
             rec.result       = "BLOCKED";
@@ -478,8 +520,8 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   // 5. GUARD 2: NWE Dynamic Volatility Anti-Overextension Guard (Universal Boundary)
-   if(InpUseNweEngine && g_nweMAE > 0.0)
+   // 5. GUARD 2: NWE Dynamic Volatility Anti-Overextension Guard (Universal Boundary for Trend Trades)
+   if(InpUseNweEngine && g_nweMAE > 0.0 && !isReversalSetup)
    {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -954,6 +996,25 @@ void GetNextTradeAction(string &nextAction)
       g_lastBlockSource = "SWEEP_LOCKOUT";
       g_lastBlockReason = "SWEEP_HIGH_LOCKOUT";
       return;
+   }
+
+   // 3.8 Check Sweep Reversal Armed status
+   if(g_masterValid)
+   {
+      if(g_masterLiquiditySweep <= -0.99 && g_masterFastDelta3Pct >= -25.0)
+      {
+         nextAction = "BUY (ICT Sweep Low Reversal Armed)";
+         g_lastBlockSource = "NONE";
+         g_lastBlockReason = "Sweep Low Reversal Setup Active";
+         return;
+      }
+      else if(g_masterLiquiditySweep >= 0.99 && g_masterFastDelta3Pct <= 25.0)
+      {
+         nextAction = "SELL (ICT Sweep High Reversal Armed)";
+         g_lastBlockSource = "NONE";
+         g_lastBlockReason = "Sweep High Reversal Setup Active";
+         return;
+      }
    }
 
    // 4. Check 3-Boss Alignment: Dual-AI Hierarchical Consensus & Order Flow Delta

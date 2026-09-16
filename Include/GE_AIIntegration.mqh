@@ -20,7 +20,7 @@
 input group "=== Super-Algo Strategy Synergy (Tri-Layer Consensus) ==="
 input bool   InpUseSuperTrendConsensus   = true;   // Setup A: SuperGRU + Master AI Concurrence + Order Flow
 input bool   InpUseTurtleSoupSweep       = true;   // Setup B: ICT Liquidity Sweep Reversal (Feature #13 + NWE Band)
-input bool   InpUseNweReversalSniper     = false;  // Setup C: NWE Boundary Sniper (Default OFF - NWE is Guard Only)
+input bool   InpUseNweReversalSniper     = true;   // Setup C: GKC Boundary Mean-Reversion Scalper
 input bool   InpUseSuperGruCoreTrend     = true;   // Setup D: SuperGRU 8-Hour Temporal Trend Engine
 
 input group "=== Model Paths (relative to MQL5/Files) ==="
@@ -863,8 +863,26 @@ void DispatchEnabledStrategies()
    }
 
    //===================================================================
-   // SETUP C: NWE_REVERSAL_SNIPER -> Converted to Universal Boundary Guard (Zero Standalone Orders)
+   // SETUP C: NWE_REVERSAL_SNIPER (GKC Boundary Mean-Reversion Scalper)
    //===================================================================
+   if(InpUseNweReversalSniper && g_nweMAE > 0.0)
+   {
+      double rsi0 = DashRSI(0);
+      double nweRange = g_nweUpperBand - g_nweLowerBand;
+      if(nweRange > 0.0)
+      {
+         // 1. Lower Band Mean-Reversion BUY: Price near/at lower band + RSI oversold (<= 35) + Lower Rejection Wick >= 25%
+         if(close1 <= (g_nweLowerBand + g_nweMAE * 0.3) && loWick1 >= 0.25 && rsi0 <= 35.0)
+         {
+            if(AttemptTradePlacement("NWE_REVERSAL_SNIPER", "BUY")) return;
+         }
+         // 2. Upper Band Mean-Reversion SELL: Price near/at upper band + RSI overbought (>= 65) + Upper Rejection Wick >= 25%
+         else if(close1 >= (g_nweUpperBand - g_nweMAE * 0.3) && upWick1 >= 0.25 && rsi0 >= 65.0)
+         {
+            if(AttemptTradePlacement("NWE_REVERSAL_SNIPER", "SELL")) return;
+         }
+      }
+   }
 
    //===================================================================
    // SETUP D: ONNX_CORE (SuperGRU 76 Core Direction Engine - Universal Tri-Core Locked)

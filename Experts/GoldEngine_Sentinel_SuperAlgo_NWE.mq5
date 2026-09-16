@@ -156,6 +156,30 @@ void OnTick()
       DispatchEnabledStrategies();
       CheckExitContract(g_cachedOnnxBull, g_cachedOnnxBear, g_cachedOnnxValid);
    }
+   else if(PositionsTotal() == 0)
+   {
+      // 1.5 Intra-Bar High-Conviction Reversal Evaluation (Lever 4)
+      static datetime lastIntraCheck = 0;
+      datetime nowT = TimeCurrent();
+      if(nowT - lastIntraCheck >= 30) // check every 30 seconds
+      {
+         double o0 = iOpen(_Symbol, _Period, 0);
+         double c0 = iClose(_Symbol, _Period, 0);
+         double h0 = iHigh(_Symbol, _Period, 0);
+         double l0 = iLow(_Symbol, _Period, 0);
+         double rng = MathMax(h0 - l0, 1e-8);
+         double upWick = (h0 - MathMax(o0, c0)) / rng;
+         double loWick = (MathMin(o0, c0) - l0) / rng;
+
+         // Intra-bar trigger on sharp rejection wick at envelope extremes
+         if((upWick >= 0.35 && c0 >= (g_nweUpperBand - g_nweMAE * 0.25)) ||
+            (loWick >= 0.35 && c0 <= (g_nweLowerBand + g_nweMAE * 0.25)))
+         {
+            lastIntraCheck = nowT;
+            DispatchEnabledStrategies();
+         }
+      }
+   }
 
    // 2. Real-Time Tick Protection & Telemetry
    UpdateNweEngine();
