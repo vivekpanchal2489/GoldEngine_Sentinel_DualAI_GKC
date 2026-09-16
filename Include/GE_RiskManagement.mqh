@@ -305,25 +305,32 @@ double CalculateDynamicBalanceLot(const double slDistUSD = 0.0)
    double targetRisk = InpRiskPerTradeUSD; // e.g. $50.00 USD
    if(targetRisk <= 0.0) targetRisk = 50.0;
 
-   double calculatedLot = 0.0;
-   if(slDistUSD > 0.0)
-   {
-      double lossPerLot = (slDistUSD / tickSize) * tickValue;
-      if(lossPerLot > 0.0)
-         calculatedLot = targetRisk / lossPerLot;
-   }
+   double baseFloor = MathMax(InpBaseMinLot, 0.15); // Minimum 0.15 lot floor
 
-   if(calculatedLot <= 0.0)
+   double effectiveSlDist = slDistUSD;
+   if(effectiveSlDist <= 0.0)
    {
-      double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-      int hundreds = (int)MathFloor(balance / InpBalanceStepUSD);
-      if(hundreds < 1) hundreds = 1;
-      calculatedLot = InpBaseMinLot + (hundreds - 1) * InpLotStepIncrement;
+      double atrBuf[];
+      int atrH = iATR(_Symbol, _Period, 14);
+      if(atrH != INVALID_HANDLE && CopyBuffer(atrH, 0, 0, 1, atrBuf) > 0 && atrBuf[0] > 0.0)
+         effectiveSlDist = atrBuf[0] * InpATRMultiplier;
+      else
+         effectiveSlDist = InpExitSLDistUSD;
    }
+   if(effectiveSlDist <= 0.0) effectiveSlDist = 5.0;
+
+   double calculatedLot = 0.0;
+   double lossPerLot = (effectiveSlDist / tickSize) * tickValue;
+   if(lossPerLot > 0.0)
+      calculatedLot = targetRisk / lossPerLot;
+
+   if(calculatedLot < baseFloor)
+      calculatedLot = baseFloor;
 
    // Apply Zone-Adaptive Lot Governor Ceiling
    double zoneCap = GetActiveZoneMaxLot();
-   if(zoneCap > 0.0 && calculatedLot > zoneCap)
+   if(zoneCap <= 0.0) zoneCap = 0.20;
+   if(calculatedLot > zoneCap)
       calculatedLot = zoneCap;
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -333,7 +340,7 @@ double CalculateDynamicBalanceLot(const double slDistUSD = 0.0)
    if(minLot <= 0.0) minLot = 0.01;
    if(stepLot <= 0.0) stepLot = 0.01;
 
-   if(calculatedLot < InpBaseMinLot) calculatedLot = InpBaseMinLot;
+   if(calculatedLot < baseFloor) calculatedLot = baseFloor;
    if(calculatedLot < minLot) calculatedLot = minLot;
    if(calculatedLot > InpMaxLotSize) calculatedLot = InpMaxLotSize;
    if(maxLot > 0.0 && calculatedLot > maxLot) calculatedLot = maxLot;
