@@ -33,21 +33,21 @@ input int    InpZone1StartMin       = 30;     // Zone 1 Start Minute (IST)
 input double InpZone1Confidence     = 0.550;  // Zone 1 Confidence Threshold (Sydney/Tokyo - 55.0%)
 input double InpZone1Margin         = 0.070;  // Zone 1 Margin Gap (7.0%)
 input double InpZone1MaxLot         = 0.15;   // Zone 1 Max Lot (Max 0.15 lots)
-input double InpZone1StepSizeUSD     = 25.0;   // Zone 1 Step Ladder Trailing Step ($25 USD)
+input double InpZone1StepSizeUSD     = 50.0;   // Zone 1 Min Win Lock Target ($50.00 USD)
 
 input int    InpZone2StartHour      = 13;     // Zone 2 Start Hour (IST, default 1:30 PM)
 input int    InpZone2StartMin       = 30;     // Zone 2 Start Minute (IST)
 input double InpZone2Confidence     = 0.535;  // Zone 2 Confidence Threshold (London/NY Peak - 53.5%)
-input double InpZone2Margin         = 0.050;  // Zone 2 Margin Gap (5.0%)
+input double InpZone2Margin         = 0.035;  // Zone 2 Margin Gap (3.5% - High Momentum)
 input double InpZone2MaxLot         = 0.15;   // Zone 2 Max Lot (Max 0.15 lots)
-input double InpZone2StepSizeUSD     = 25.0;   // Zone 2 Step Ladder Trailing Step ($25 USD)
+input double InpZone2StepSizeUSD     = 50.0;   // Zone 2 Min Win Lock Target ($50.00 USD)
 
 input int    InpZone3StartHour      = 21;     // Zone 3 Start Hour (IST, default 9:30 PM)
 input int    InpZone3StartMin       = 30;     // Zone 3 Start Minute (IST)
 input double InpZone3Confidence     = 0.550;  // Zone 3 Confidence Threshold (Late NY Close - 55.0%)
 input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
 input double InpZone3MaxLot         = 0.15;   // Zone 3 Max Lot (Max 0.15 lots)
-input double InpZone3StepSizeUSD     = 25.0;   // Zone 3 Step Ladder Trailing Step ($25 USD)
+input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
 
 input group "=== Session Execution Controls (IST) ==="
 input bool   InpEnableZone1Trading  = true;   // Enable Trading in Zone 1 (Asian Session: 03:30 AM - 01:30 PM IST) [TRUE = Free Trading]
@@ -144,12 +144,12 @@ bool IsZoneTradingAllowed(string &zoneBlockedReason)
 }
 
 //+------------------------------------------------------------------+
-//| GetActiveStepSizeUSD — Dynamic Session Step Ladder Trailing Step |
+//| GetActiveZoneId — 1=Asian, 2=London/NY Peak, 3=Late NY           |
 //+------------------------------------------------------------------+
-double GetActiveStepSizeUSD(const double defaultStepUSD = 15.0)
+int GetActiveZoneId()
 {
    if(!InpUseDynamicScheduler)
-      return defaultStepUSD;
+      return 2;
 
    MqlDateTime dt;
    TimeLocal(dt); // Computer system clock (IST)
@@ -159,15 +159,26 @@ double GetActiveStepSizeUSD(const double defaultStepUSD = 15.0)
    int z2Minutes = InpZone2StartHour * 60 + InpZone2StartMin;
    int z3Minutes = InpZone3StartHour * 60 + InpZone3StartMin;
 
-   // Zone 1: Sydney/Tokyo Open & Morning Chop (3:30 AM to 1:30 PM IST)
    if(currentMinutes >= z1Minutes && currentMinutes < z2Minutes)
-      return InpZone1StepSizeUSD;
-   // Zone 2: London & NY Peak (1:30 PM to 9:30 PM IST)
+      return 1;
    else if(currentMinutes >= z2Minutes && currentMinutes < z3Minutes)
-      return InpZone2StepSizeUSD;
-   // Zone 3: Late NY Close & Night Drift (9:30 PM to 3:30 AM IST)
+      return 2;
    else
-      return InpZone3StepSizeUSD;
+      return 3;
+}
+
+//+------------------------------------------------------------------+
+//| GetActiveStepSizeUSD — Dynamic Session Step Ladder Trailing Step |
+//+------------------------------------------------------------------+
+double GetActiveStepSizeUSD(const double defaultStepUSD = 50.0)
+{
+   if(!InpUseDynamicScheduler)
+      return defaultStepUSD;
+
+   int zone = GetActiveZoneId();
+   if(zone == 1) return InpZone1StepSizeUSD;
+   if(zone == 2) return InpZone2StepSizeUSD;
+   return InpZone3StepSizeUSD;
 }
 
 //+------------------------------------------------------------------+
@@ -175,9 +186,9 @@ double GetActiveStepSizeUSD(const double defaultStepUSD = 15.0)
 //+------------------------------------------------------------------+
 input group "=== Risk & Position Sizing ==="
 input bool   InpUseConcurrencyCap   = true;    // Enforce the max-position cap and per-trade risk limit
-input int    InpMaxConcurrentTrades = 3;       // Max simultaneous positions the EA may hold (Max 3 Concurrent Trades)
-input int    InpMaxPositionsPerDir  = 3;       // Max simultaneous positions in the same direction
-input double InpMinEntrySpacingPts   = 6.0;     // Min price distance (pts) to open concurrent position in same direction
+input int    InpMaxConcurrentTrades = 2;       // Max simultaneous positions (Pyramiding Cap: 2 Concurrent Trades)
+input int    InpMaxPositionsPerDir  = 2;       // Max simultaneous positions in the same direction
+input double InpMinEntrySpacingPts   = 4.0;     // Min price distance (pts) to open concurrent position in same direction
 input int    InpMinEntryCooldownBars = 2;       // Min M5 bars (10 mins) between opening concurrent positions
 input double InpRiskPerTradeUSD     = 50.0;    // Risk per trade in USD — baseline for flat sizing
 input double InpMinRiskUSD          = 50.0;    // Floor USD risk per trade (minimum allowed risk)

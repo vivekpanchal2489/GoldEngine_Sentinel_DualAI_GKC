@@ -821,7 +821,7 @@ void DispatchEnabledStrategies()
       else
          buyMasterOk = (g_masterProbBull >= 0.55 && (g_masterProbBull - g_masterProbBear) >= 0.10);
 
-      bool buyDeltaOk = (g_masterMacroDelta12Pct >= 10.0 || (strongGruBull && g_masterMacroDelta12Pct >= 0.0));
+      bool buyDeltaOk = (g_masterMacroDelta12Pct >= 6.0 || (strongGruBull && g_masterMacroDelta12Pct >= 0.0));
 
       if(g_cachedOnnxBull >= InpStrategyOnnxMinProb && g_cachedOnnxBull > g_cachedOnnxBear &&
          !isRecentHighSweep && buyDeltaOk && buyMasterOk && g_masterFastDelta3Pct >= -10.0)
@@ -836,7 +836,7 @@ void DispatchEnabledStrategies()
       else
          sellMasterOk = (g_masterProbBear >= 0.55 && (g_masterProbBear - g_masterProbBull) >= 0.10);
 
-      bool sellDeltaOk = (g_masterMacroDelta12Pct <= -10.0 || (strongGruBear && g_masterMacroDelta12Pct <= 0.0));
+      bool sellDeltaOk = (g_masterMacroDelta12Pct <= -6.0 || (strongGruBear && g_masterMacroDelta12Pct <= 0.0));
 
       if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
          !isRecentLowSweep && sellDeltaOk && sellMasterOk && g_masterFastDelta3Pct <= 10.0)
@@ -850,13 +850,13 @@ void DispatchEnabledStrategies()
    //===================================================================
    if(InpUseTurtleSoupSweep && g_masterValid && g_nweMAE > 0.0)
    {
-      // Master AI detected Sweep Low (-1.0) -> Rejection lower wick >= 35% near NWE Lower Band -> BUY
-      if(g_masterLiquiditySweep <= -0.99 && loWick1 >= 0.35 && (close1 <= g_nweLowerBand + g_nweMAE * 0.3))
+      // Master AI detected Sweep Low (-1.0) -> Rejection lower wick >= 25% near NWE Lower Band -> BUY
+      if(g_masterLiquiditySweep <= -0.99 && loWick1 >= 0.25 && (close1 <= g_nweLowerBand + g_nweMAE * 0.3))
       {
          if(AttemptTradePlacement("TURTLE_SOUP_SWEEP", "BUY")) return;
       }
-      // Master AI detected Sweep High (+1.0) -> Rejection upper wick >= 35% near NWE Upper Band -> SELL
-      else if(g_masterLiquiditySweep >= 0.99 && upWick1 >= 0.35 && (close1 >= g_nweUpperBand - g_nweMAE * 0.3))
+      // Master AI detected Sweep High (+1.0) -> Rejection upper wick >= 25% near NWE Upper Band -> SELL
+      else if(g_masterLiquiditySweep >= 0.99 && upWick1 >= 0.25 && (close1 >= g_nweUpperBand - g_nweMAE * 0.3))
       {
          if(AttemptTradePlacement("TURTLE_SOUP_SWEEP", "SELL")) return;
       }

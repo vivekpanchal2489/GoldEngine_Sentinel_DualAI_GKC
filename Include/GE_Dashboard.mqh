@@ -65,6 +65,7 @@ int g_dbY = -1;
 // Forward declarations
 void GetActiveConvictionSettings(double &activeConf, double &activeMargin, string &activeZoneName, string &activeZoneSched);
 double CalculateDynamicBalanceLot(const double slDistUSD = 0.0);
+int GetActiveZoneId();
 
 //+------------------------------------------------------------------+
 //| Helper to create label text elements                             |
@@ -263,7 +264,11 @@ void DashboardBuildLines(string &lines[])
    if(g_dashKillSwitchActive || g_killSwitchBtnActive)
       ArrayAdd(lines, "\x26D4 Status       : TRADING HALTED (Kill Switch Active)");
    else
-      ArrayAdd(lines, StringFormat("\x25CF Status       : TRADING ACTIVE (Lot: %.2f | Pos: %d/%d | Sentinel Trail: Step Ladder $25->$15)", dynLot, openCount, InpMaxConcurrentTrades));
+   {
+      int activeZone = GetActiveZoneId();
+      string trailDesc = (activeZone == 3) ? "Zone 3 ($10 Trailing)" : "Zone 1/2 (Min $50 Win Lock -> $25 Rungs)";
+      ArrayAdd(lines, StringFormat("\x25CF Status       : TRADING ACTIVE (Lot: %.2f | Pos: %d/%d | %s)", dynLot, openCount, InpMaxConcurrentTrades, trailDesc));
+   }
 
    // Line 1: Current IST Time (with seconds) & Active Zone
    MqlDateTime dt;

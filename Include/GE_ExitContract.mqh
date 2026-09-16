@@ -23,20 +23,20 @@
 //+------------------------------------------------------------------+
 input group "=== Original Sentinel SL Trailing & Profit Lock Engine ==="
 input bool   InpUseLadderTrail        = true;   // Enable Sentinel Trailing Stop-Loss Engine
-input bool   InpUseStepLadder         = true;   // Method A: USD Step Ladder Trail ($25 -> $15, $50 -> $25...)
-input double InpStepSizeUSD           = 25.0;   // Step Size and Trailing Buffer in USD ($25.00)
+input bool   InpUseStepLadder         = true;   // Method A: USD Step Ladder Trail (Zone-Adaptive Big-Profit)
+input double InpStepSizeUSD           = 50.0;   // Reference Step Size in USD ($50.00 Min Win Lock)
 input bool   InpUseATRTrailing        = true;   // Method B: Dynamic ATR Volatility Trailing (if StepLadder disabled)
-input double InpTrailLockUSD          = 25.0;   // Unrealized Profit in USD to start ATR trailing ($25.00)
-input double InpTrailDistUSD          = 20.0;   // Fallback Trailing Distance in USD ($20.00)
+input double InpTrailLockUSD          = 50.0;   // Unrealized Profit in USD to start ATR trailing ($50.00)
+input double InpTrailDistUSD          = 25.0;   // Fallback Trailing Distance in USD ($25.00)
 input double InpTrailATRMultiplier    = 2.5;    // Trailing Stop Distance in ATRs (2.5x ATR)
 
 input group "=== Initial Risk Contract (SL / TP / Reversal) ==="
 input bool   InpUseATRStopLoss        = true;   // Use ATR-based SL/TP instead of fixed-USD distances
 input double InpATRMultiplier         = 4.0;    // Initial SL = InpATRMultiplier x ATR(14) (4.0x ATR)
-input double InpFomoRRRatio           = 2.0;    // Initial TP = SL x InpFomoRRRatio (8.0x ATR => 1:2 RR)
+input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRatio (12.0x ATR => 1:3 RR)
 input double InpFixedRiskUSD          = 50.0;   // FIXED loss per trade in account USD (structural fallback)
 input double InpExitSLDistUSD         = 20.0;   // Reference SL distance used for lot-sizing math
-input double InpExitTPDistUSD         = 50.0;   // Take-profit distance in USD
+input double InpExitTPDistUSD         = 150.0;  // Reference Take-profit distance in USD ($150.00)
 input int    InpMaxHoldMinutes        = 0;      // Max time in position before forced close (0 = DISABLED)
 input bool   InpExitOnReversal        = false;  // ONNX AI Reversal Exit (0 = DISABLED, rely strictly on Step-Ladder & Hard SL)
 input double InpExitReversalP         = 0.60;   // ONNX probability that flips a position to opposite side
@@ -165,23 +165,35 @@ void CheckExitContractTick()
       double targetSL = 0.0;
       bool modifyNeeded = false;
 
-      //=== METHOD A: USD-based Step Ladder Trail (locks in $15 at $25 for $25 step, $25 at $50 for $25 step, scaling infinitely) ===
+      //=== METHOD A: USD-based Zone-Adaptive Step Ladder Trail ===
       if(InpUseStepLadder)
       {
-         double activeStep = GetActiveStepSizeUSD(InpStepSizeUSD);
-         if(activeStep <= 0.0) activeStep = 25.0;
+         int activeZone = GetActiveZoneId();
          double lockedProfitUSD = 0.0;
          
-         if(profit >= activeStep && profit < 2.0 * activeStep)
+         // Zone 1 (Asian) & Zone 2 (London/NY Peak): Big Profit Mode ($50 min win lock at $75 profit, scaling infinitely)
+         if(activeZone == 1 || activeZone == 2)
          {
-            // First step (e.g. $25.00 to $49.99): lock $15.00 (+USD buffer)
-            lockedProfitUSD = activeStep * 0.60;
+            if(profit >= 75.0)
+            {
+               // First rung ($75 to $99.99): locks $50.00 minimum win
+               // Above $75: climbs in $25 rungs ($100->$75, $125->$100, $150->$125, $175->$150, $200->$175...)
+               int rungsAbove75 = (int)((profit - 75.0) / 25.0);
+               lockedProfitUSD = 50.0 + (rungsAbove75 * 25.0);
+            }
          }
-         else if(profit >= 2.0 * activeStep)
+         // Zone 3 (Late NY Close): Micro-Trailing Mode (Every $10 USD ratchet)
+         else
          {
-            // Subsequent steps ($50 -> $25, $75 -> $50, $100 -> $75... infinitely until closed)
-            int n = (int)(profit / activeStep);
-            lockedProfitUSD = (n - 1) * activeStep;
+            if(profit >= 15.0 && profit < 25.0)
+            {
+               lockedProfitUSD = 10.0;
+            }
+            else if(profit >= 25.0)
+            {
+               int n = (int)(profit / 10.0);
+               lockedProfitUSD = (n - 1) * 10.0;
+            }
          }
          
          if(lockedProfitUSD > 0.0)

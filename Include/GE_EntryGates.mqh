@@ -388,12 +388,12 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    {
       if(direction == "BUY")
       {
-         // Block BUY if macro delta is strongly negative (selling momentum < -10%)
-         if(g_masterMacroDelta12Pct < -10.0)
+         // Block BUY if macro delta is strongly negative (selling momentum < -6%)
+         if(g_masterMacroDelta12Pct < -6.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %+.1f%% < -10.0%% (Bearish Momentum)", g_masterMacroDelta12Pct);
+            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %+.1f%% < -6.0%% (Bearish Momentum)", g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
@@ -418,12 +418,12 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       }
       else if(direction == "SELL")
       {
-         // Block SELL if macro delta is strongly positive (buying momentum > +10%)
-         if(g_masterMacroDelta12Pct > 10.0)
+         // Block SELL if macro delta is strongly positive (buying momentum > +6%)
+         if(g_masterMacroDelta12Pct > 6.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > +10.0%% (Bullish Momentum)", g_masterMacroDelta12Pct);
+            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > +6.0%% (Bullish Momentum)", g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
@@ -489,22 +489,24 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       if(nweRange > 0.0)
       {
          double channelPos = (c0 - g_nweLowerBand) / nweRange; // 0.0 = lower band floor, 1.0 = upper band ceiling
+         double maxChannelPos = strongGruTrend ? 0.88 : 0.80;
+         double minChannelPos = strongGruTrend ? 0.12 : 0.20;
 
-         if(direction == "BUY" && (ask >= g_nweUpperBand || channelPos > 0.80))
+         if(direction == "BUY" && (ask >= (g_nweUpperBand + (strongGruTrend ? g_nweMAE * 0.1 : 0.0)) || channelPos > maxChannelPos))
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "NWE_OVEREXTENSION";
-            rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f at Upper NWE Band %.2f (Channel Pos %.1f%% > 80%% Ceiling)",
-                                              ask, g_nweUpperBand, channelPos * 100.0);
+            rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f at Upper NWE Band %.2f (Channel Pos %.1f%% > %.0f%% Ceiling)",
+                                              ask, g_nweUpperBand, channelPos * 100.0, maxChannelPos * 100.0);
             LogTradeAttempt(rec);
             return false;
          }
-         else if(direction == "SELL" && (bid <= g_nweLowerBand || channelPos < 0.20))
+         else if(direction == "SELL" && (bid <= (g_nweLowerBand - (strongGruTrend ? g_nweMAE * 0.1 : 0.0)) || channelPos < minChannelPos))
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "NWE_OVEREXTENSION";
-            rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f at Lower NWE Band %.2f (Channel Pos %.1f%% < 20%% Floor)",
-                                              bid, g_nweLowerBand, channelPos * 100.0);
+            rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f at Lower NWE Band %.2f (Channel Pos %.1f%% < %.0f%% Floor)",
+                                              bid, g_nweLowerBand, channelPos * 100.0, minChannelPos * 100.0);
             LogTradeAttempt(rec);
             return false;
          }
@@ -968,7 +970,7 @@ void GetNextTradeAction(string &nextAction)
             g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s)", (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"));
             return;
          }
-         else if(g_masterMacroDelta12Pct < -10.0 || (!strongGru && g_masterMacroDelta12Pct < 0.0))
+         else if(g_masterMacroDelta12Pct < -6.0 || (!strongGru && g_masterMacroDelta12Pct < 0.0))
          {
             nextAction = StringFormat("BLOCKED (Flow Conflict: 60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
             g_lastBlockSource = "ORDER_FLOW";
@@ -993,7 +995,7 @@ void GetNextTradeAction(string &nextAction)
             g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s)", (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"));
             return;
          }
-         else if(g_masterMacroDelta12Pct > 10.0 || (!strongGru && g_masterMacroDelta12Pct > 0.0))
+         else if(g_masterMacroDelta12Pct > 6.0 || (!strongGru && g_masterMacroDelta12Pct > 0.0))
          {
             nextAction = StringFormat("BLOCKED (Flow Conflict: 60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
             g_lastBlockSource = "ORDER_FLOW";
@@ -1016,19 +1018,22 @@ void GetNextTradeAction(string &nextAction)
       double c0 = iClose(_Symbol, _Period, 0);
       double nweRange = g_nweUpperBand - g_nweLowerBand;
       double channelPos = (nweRange > 0.0) ? (c0 - g_nweLowerBand) / nweRange : 0.5;
+      bool strongGru = (dirProb >= 0.60 && margin >= 0.15);
+      double maxPos = strongGru ? 0.88 : 0.80;
+      double minPos = strongGru ? 0.12 : 0.20;
 
-      if(dir == "BUY" && (IsPriceAtTopExhaustion() || channelPos > 0.80))
+      if(dir == "BUY" && (IsPriceAtTopExhaustion() || channelPos > maxPos))
       {
-         nextAction = "BLOCKED (NWE Top Ceiling Veto > 80%)";
+         nextAction = StringFormat("BLOCKED (NWE Top Ceiling Veto > %.0f%%)", maxPos * 100.0);
          g_lastBlockSource = "NWE_EXHAUSTION";
-         g_lastBlockReason = StringFormat("TOP_EXHAUSTION (Channel Pos %.1f%% > 80%%)", channelPos * 100.0);
+         g_lastBlockReason = StringFormat("TOP_EXHAUSTION (Channel Pos %.1f%% > %.0f%%)", channelPos * 100.0, maxPos * 100.0);
          return;
       }
-      else if(dir == "SELL" && (IsPriceAtBottomExhaustion() || channelPos < 0.20))
+      else if(dir == "SELL" && (IsPriceAtBottomExhaustion() || channelPos < minPos))
       {
-         nextAction = "BLOCKED (NWE Bottom Floor Veto < 20%)";
+         nextAction = StringFormat("BLOCKED (NWE Bottom Floor Veto < %.0f%%)", minPos * 100.0);
          g_lastBlockSource = "NWE_EXHAUSTION";
-         g_lastBlockReason = StringFormat("BOTTOM_EXHAUSTION (Channel Pos %.1f%% < 20%%)", channelPos * 100.0);
+         g_lastBlockReason = StringFormat("BOTTOM_EXHAUSTION (Channel Pos %.1f%% < %.0f%%)", channelPos * 100.0, minPos * 100.0);
          return;
       }
    }
