@@ -32,10 +32,10 @@ input double InpTrailATRMultiplier    = 2.5;    // Trailing Stop Distance in ATR
 
 input group "=== Initial Risk Contract (SL / TP / Reversal) ==="
 input bool   InpUseATRStopLoss        = true;   // Use ATR-based SL/TP instead of fixed-USD distances
-input double InpATRMultiplier         = 4.0;    // Initial SL = InpATRMultiplier x ATR(14) (4.0x ATR)
-input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRatio (12.0x ATR => 1:3 RR)
+input double InpATRMultiplier         = 2.5;    // Initial SL = InpATRMultiplier x ATR(14) (2.5x ATR ~3.5-5.0 pts)
+input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRatio (7.5x ATR => 1:3 RR)
 input double InpFixedRiskUSD          = 50.0;   // FIXED loss per trade in account USD (structural fallback)
-input double InpExitSLDistUSD         = 20.0;   // Reference SL distance used for lot-sizing math
+input double InpExitSLDistUSD         = 6.0;    // Reference SL distance used for lot-sizing math ($6.00)
 input double InpExitTPDistUSD         = 150.0;  // Reference Take-profit distance in USD ($150.00)
 input int    InpMaxHoldMinutes        = 0;      // Max time in position before forced close (0 = DISABLED)
 input bool   InpExitOnReversal        = false;  // ONNX AI Reversal Exit (0 = DISABLED, rely strictly on Step-Ladder & Hard SL)

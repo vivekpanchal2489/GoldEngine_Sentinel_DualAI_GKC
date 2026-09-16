@@ -20,9 +20,9 @@ double g_cachedRegimeChopProb  = 0.5;
 //+------------------------------------------------------------------+
 //| Dynamic Balance Sizing Settings                                  |
 //+------------------------------------------------------------------+
-input group "=== Dynamic Account Balance Sizing ($100 -> 0.02) ==="
+input group "=== Dynamic Account Balance Sizing ($100 -> 0.15) ==="
 input bool   InpUseDynamicBalanceSizing = true;    // Dynamic Lot Sizing based on Volatility & Balance
-input double InpBaseMinLot              = 0.02;    // Minimum Base Lot
+input double InpBaseMinLot              = 0.15;    // Minimum Base Lot Floor (0.15 lots for fast $50 profit scaling)
 input double InpBalanceStepUSD          = 100.0;   // Balance Increment Step ($100)
 input double InpLotStepIncrement        = 0.01;    // Lot Increment per Step (+0.01)
 
@@ -32,21 +32,21 @@ input int    InpZone1StartHour      = 3;      // Zone 1 Start Hour (IST, default
 input int    InpZone1StartMin       = 30;     // Zone 1 Start Minute (IST)
 input double InpZone1Confidence     = 0.550;  // Zone 1 Confidence Threshold (Sydney/Tokyo - 55.0%)
 input double InpZone1Margin         = 0.070;  // Zone 1 Margin Gap (7.0%)
-input double InpZone1MaxLot         = 0.15;   // Zone 1 Max Lot (Max 0.15 lots)
+input double InpZone1MaxLot         = 0.20;   // Zone 1 Max Lot (0.20 lots max)
 input double InpZone1StepSizeUSD     = 50.0;   // Zone 1 Min Win Lock Target ($50.00 USD)
 
 input int    InpZone2StartHour      = 13;     // Zone 2 Start Hour (IST, default 1:30 PM)
 input int    InpZone2StartMin       = 30;     // Zone 2 Start Minute (IST)
 input double InpZone2Confidence     = 0.535;  // Zone 2 Confidence Threshold (London/NY Peak - 53.5%)
 input double InpZone2Margin         = 0.035;  // Zone 2 Margin Gap (3.5% - High Momentum)
-input double InpZone2MaxLot         = 0.15;   // Zone 2 Max Lot (Max 0.15 lots)
+input double InpZone2MaxLot         = 0.20;   // Zone 2 Max Lot (0.20 lots max)
 input double InpZone2StepSizeUSD     = 50.0;   // Zone 2 Min Win Lock Target ($50.00 USD)
 
 input int    InpZone3StartHour      = 21;     // Zone 3 Start Hour (IST, default 9:30 PM)
 input int    InpZone3StartMin       = 30;     // Zone 3 Start Minute (IST)
 input double InpZone3Confidence     = 0.550;  // Zone 3 Confidence Threshold (Late NY Close - 55.0%)
 input double InpZone3Margin         = 0.070;  // Zone 3 Margin Gap (7.0%)
-input double InpZone3MaxLot         = 0.15;   // Zone 3 Max Lot (Max 0.15 lots)
+input double InpZone3MaxLot         = 0.20;   // Zone 3 Max Lot (0.20 lots max)
 input double InpZone3StepSizeUSD     = 10.0;   // Zone 3 Step Ladder Trailing Step ($10 USD)
 
 input group "=== Session Execution Controls (IST) ==="
@@ -193,8 +193,8 @@ input int    InpMinEntryCooldownBars = 2;       // Min M5 bars (10 mins) between
 input double InpRiskPerTradeUSD     = 50.0;    // Risk per trade in USD — baseline for flat sizing
 input double InpMinRiskUSD          = 50.0;    // Floor USD risk per trade (minimum allowed risk)
 input double InpMaxRiskUSD          = 200.0;   // Ceiling USD risk per trade (maximum allowed risk)
-input double InpMinLotSize          = 0.02;    // Minimum lot size allowed (broker floor safety clamp)
-input double InpMaxLotSize          = 0.50;    // Maximum lot size allowed (hard ceiling, prevents oversized orders)
+input double InpMinLotSize          = 0.15;    // Minimum lot size allowed (0.15 lot floor safety clamp)
+input double InpMaxLotSize          = 0.25;    // Maximum lot size allowed (0.25 lot ceiling)
 input double InpMaxRiskOverageUSD   = 100.00;  // Max extra USD risk accepted when rounding up to the lot floor
 input double InpHighConfidenceThreshold = 0.62; // Confidence threshold to trigger a lot size boost
 input double InpConfidenceBoostMult     = 1.5;  // Multiplier to scale trade risk when threshold is met
