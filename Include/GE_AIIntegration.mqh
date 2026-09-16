@@ -771,6 +771,14 @@ void UpdateOnnxCache()
       g_masterValid = false;
    }
 
+   if(g_masterValid)
+   {
+      if(g_masterLiquiditySweep <= -0.99)
+         g_lastSweepLowTime = currentBarTime;
+      else if(g_masterLiquiditySweep >= 0.99)
+         g_lastSweepHighTime = currentBarTime;
+   }
+
    RefreshRegimeCache();
 
    PrintFormat("[Dual-AI Inferred] Bar %s -> SuperGRU: BULL %.3f | BEAR %.3f | MasterAI: BULL %.3f | NEU %.3f | BEAR %.3f | Flow 60m: %+.1f%% | Fast 15m: %+.1f%% | Sweep: %.1f",
@@ -793,21 +801,45 @@ void DispatchEnabledStrategies()
    double range1 = MathMax(high1 - low1, 1e-8);
    double upWick1 = (high1 - MathMax(open1, close1)) / range1;
    double loWick1 = (MathMin(open1, close1) - low1) / range1;
+   datetime bar0Time = iTime(_Symbol, _Period, 0);
 
    //===================================================================
    // SETUP A: SUPER_TREND_CONSENSUS (SuperGRU 76 + Master AI 76 Concurrence)
    //===================================================================
    if(InpUseSuperTrendConsensus && g_cachedOnnxValid && g_masterValid)
    {
+      bool isRecentLowSweep  = (g_lastSweepLowTime > 0  && (bar0Time - g_lastSweepLowTime)  <= 6 * PeriodSeconds(_Period));
+      bool isRecentHighSweep = (g_lastSweepHighTime > 0 && (bar0Time - g_lastSweepHighTime) <= 6 * PeriodSeconds(_Period));
+
+      bool strongGruBull = (g_cachedOnnxBull >= 0.60 && (g_cachedOnnxBull - g_cachedOnnxBear) >= 0.15);
+      bool strongGruBear = (g_cachedOnnxBear >= 0.60 && (g_cachedOnnxBear - g_cachedOnnxBull) >= 0.15);
+
+      // 1. BUY STRATEGY
+      bool buyMasterOk = false;
+      if(strongGruBull)
+         buyMasterOk = (g_masterProbBull >= 0.35 && g_masterProbBear <= 0.60);
+      else
+         buyMasterOk = (g_masterProbBull >= 0.55 && (g_masterProbBull - g_masterProbBear) >= 0.10);
+
+      bool buyDeltaOk = (g_masterMacroDelta12Pct >= 10.0 || (strongGruBull && g_masterMacroDelta12Pct >= 0.0));
+
       if(g_cachedOnnxBull >= InpStrategyOnnxMinProb && g_cachedOnnxBull > g_cachedOnnxBear &&
-         g_masterProbBull >= 0.475 && g_masterProbBull > g_masterProbBear &&
-         (g_masterMacroDelta12Pct >= 0.0 || g_masterDelta >= 0.0) && g_masterFastDelta3Pct >= 0.0)
+         !isRecentHighSweep && buyDeltaOk && buyMasterOk && g_masterFastDelta3Pct >= -10.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "BUY")) return;
       }
-      else if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
-              g_masterProbBear >= 0.475 && g_masterProbBear > g_masterProbBull &&
-              (g_masterMacroDelta12Pct <= 0.0 || g_masterDelta <= 0.0) && g_masterFastDelta3Pct <= 0.0)
+
+      // 2. SELL STRATEGY
+      bool sellMasterOk = false;
+      if(strongGruBear)
+         sellMasterOk = (g_masterProbBear >= 0.35 && g_masterProbBull <= 0.60);
+      else
+         sellMasterOk = (g_masterProbBear >= 0.55 && (g_masterProbBear - g_masterProbBull) >= 0.10);
+
+      bool sellDeltaOk = (g_masterMacroDelta12Pct <= -10.0 || (strongGruBear && g_masterMacroDelta12Pct <= 0.0));
+
+      if(g_cachedOnnxBear >= InpStrategyOnnxMinProb && g_cachedOnnxBear > g_cachedOnnxBull &&
+         !isRecentLowSweep && sellDeltaOk && sellMasterOk && g_masterFastDelta3Pct <= 10.0)
       {
          if(AttemptTradePlacement("SUPER_TREND_CONSENSUS", "SELL")) return;
       }

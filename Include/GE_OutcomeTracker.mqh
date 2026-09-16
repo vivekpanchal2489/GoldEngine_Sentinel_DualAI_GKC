@@ -185,13 +185,22 @@ void OutcomeTrackerOnDeal(const ulong deal)
       return;
 
    ENUM_DEAL_REASON reasonEnum = (ENUM_DEAL_REASON)HistoryDealGetInteger(deal, DEAL_REASON);
+   double netProfit = HistoryDealGetDouble(deal, DEAL_PROFIT);
    string reason;
-   if(reasonEnum == DEAL_REASON_SL)
-      reason = "SL";
-   else if(reasonEnum == DEAL_REASON_TP)
+   if(reasonEnum == DEAL_REASON_TP)
       reason = "TP";
+   else if(reasonEnum == DEAL_REASON_SL)
+   {
+      // If deal closed in net profit (> 0), it was a trailing stop / profit lock!
+      if(netProfit > 0.0)
+         reason = "TP";
+      else
+         reason = "SL";
+   }
    else
-      reason = "OTHER";
+   {
+      reason = (netProfit > 0.0) ? "TP" : "OTHER";
+   }
 
    ENUM_DEAL_TYPE dealType = (ENUM_DEAL_TYPE)HistoryDealGetInteger(deal, DEAL_TYPE);
    string direction = (dealType == DEAL_TYPE_BUY) ? "BUY" : "SELL";

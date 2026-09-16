@@ -182,6 +182,8 @@ double   g_masterMacroDelta12Pct= 0.0;
 double   g_masterLiquiditySweep = 0.0; // +1.0 = sweep high (bearish), -1.0 = sweep low (bullish)
 double   g_masterImbalance      = 0.0;
 double   g_masterLargeTrade     = 0.0;
+datetime g_lastSweepLowTime     = 0;
+datetime g_lastSweepHighTime    = 0;
 
 //+------------------------------------------------------------------+
 //| Live regime/ADX/RSI cache                                        |
@@ -302,6 +304,27 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
+   // 0.8 GUARD: Liquidity Sweep Exhaustion Lockout (Sweep Memory)
+   datetime bar0Time = iTime(_Symbol, _Period, 0);
+   if(direction == "SELL" && g_lastSweepLowTime > 0 && (bar0Time - g_lastSweepLowTime) <= 6 * PeriodSeconds(_Period))
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "SWEEP_LOW_LOCKOUT";
+      rec.ai_reason_text = StringFormat("SELL blocked: Liquidity Sweep Low detected within last 6 bars (%s). High risk of mean-reversion rally.",
+                                        TimeToString(g_lastSweepLowTime, TIME_MINUTES));
+      LogTradeAttempt(rec);
+      return false;
+   }
+   if(direction == "BUY" && g_lastSweepHighTime > 0 && (bar0Time - g_lastSweepHighTime) <= 6 * PeriodSeconds(_Period))
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "SWEEP_HIGH_LOCKOUT";
+      rec.ai_reason_text = StringFormat("BUY blocked: Liquidity Sweep High detected within last 6 bars (%s). High risk of mean-reversion drop.",
+                                        TimeToString(g_lastSweepHighTime, TIME_MINUTES));
+      LogTradeAttempt(rec);
+      return false;
+   }
+
    // 1. BOSS 1: SuperGRU Directional Conviction & Symmetrical Margin
    double dirProb = (direction == "BUY" ? g_cachedOnnxBull : g_cachedOnnxBear);
    double oppProb = (direction == "BUY" ? g_cachedOnnxBear : g_cachedOnnxBull);
@@ -323,59 +346,102 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       return false;
    }
 
-   // 2. BOSS 2: Master AI Microstructure Confirmation (Directional Dominance >= 47.5%)
+   bool strongGruTrend = (dirProb >= 0.60 && margin >= 0.15);
+
+   // 2. BOSS 2: Master AI Microstructure Confirmation (Hierarchical Decoupling)
    if(g_masterValid)
    {
       double masterDirProb = (direction == "BUY" ? g_masterProbBull : g_masterProbBear);
       double masterOppProb = (direction == "BUY" ? g_masterProbBear : g_masterProbBull);
-      if(masterDirProb < 0.475 || masterDirProb <= masterOppProb)
+      double masterMargin  = MathAbs(masterDirProb - masterOppProb);
+
+      if(strongGruTrend)
       {
-         rec.result       = "BLOCKED";
-         rec.block_reason = "DUAL_AI_DIVERGENCE";
-         rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.475 or <= Opposing %.3f",
-                                           direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb, masterOppProb);
-         LogTradeAttempt(rec);
-         return false;
+         // In a strong macro trend run, Master AI only blocks if opposing conviction is extreme (>= 65% with >= 20% margin)
+         if(masterOppProb >= 0.65 && masterMargin >= 0.20)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DUAL_AI_DIVERGENCE";
+            rec.ai_reason_text = StringFormat("Master AI Strong Counter-Conviction (%s %.3f vs %s %.3f)",
+                                              (direction == "BUY" ? "Bear" : "Bull"), masterOppProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb);
+            LogTradeAttempt(rec);
+            return false;
+         }
+      }
+      else
+      {
+         // Symmetrical directional dominance requirement in normal/balanced market conditions: >= 55% with >= 10% margin lead
+         if(masterDirProb < 0.55 || masterMargin < 0.10 || masterDirProb <= masterOppProb)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DUAL_AI_DIVERGENCE";
+            rec.ai_reason_text = StringFormat("Dual-AI Divergence: SuperGRU %s %.3f but Master AI %s %.3f < 0.55 or Margin %.3f < 0.10",
+                                              direction, dirProb, (direction == "BUY" ? "Bull" : "Bear"), masterDirProb, masterMargin);
+            LogTradeAttempt(rec);
+            return false;
+         }
       }
    }
 
-   // 3. BOSS 3: Dual-Horizon Order Flow Delta Institutional Alignment
+   // 3. BOSS 3: Dual-Horizon Order Flow Delta Institutional Alignment (Filtered for Noise)
    if(g_masterValid)
    {
       if(direction == "BUY")
       {
-         if(g_masterMacroDelta12Pct < 0.0 || g_masterDelta < 0.0)
+         // Block BUY if macro delta is strongly negative (selling momentum < -10%)
+         if(g_masterMacroDelta12Pct < -10.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %.1f%% < 0", g_masterMacroDelta12Pct);
+            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %+.1f%% < -10.0%% (Bearish Momentum)", g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
-         else if(g_masterFastDelta3Pct < 0.0)
+         // In standard entries (not strong GRU trend), require positive or neutral macro delta (>= 0.0)
+         else if(!strongGruTrend && g_masterMacroDelta12Pct < 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("BUY blocked: 60m Macro Delta %+.1f%% < 0.0%% in non-trend market", g_masterMacroDelta12Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         // Fast delta rejection if strong short-term aggressive dumping (< -15%)
+         else if(g_masterFastDelta3Pct < -15.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "FAST_DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("BUY blocked: 15m Fast Delta %.1f%% < 0 (Short-term Selling Pressure)", g_masterFastDelta3Pct);
+            rec.ai_reason_text = StringFormat("BUY blocked: 15m Fast Delta %+.1f%% < -15.0%% (Severe Short-term Selling Pressure)", g_masterFastDelta3Pct);
             LogTradeAttempt(rec);
             return false;
          }
       }
       else if(direction == "SELL")
       {
-         if(g_masterMacroDelta12Pct > 0.0 || g_masterDelta > 0.0)
+         // Block SELL if macro delta is strongly positive (buying momentum > +10%)
+         if(g_masterMacroDelta12Pct > 10.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > 0", g_masterMacroDelta12Pct);
+            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > +10.0%% (Bullish Momentum)", g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
-         else if(g_masterFastDelta3Pct > 0.0)
+         // In standard entries (not strong GRU trend), require negative or neutral macro delta (<= 0.0)
+         else if(!strongGruTrend && g_masterMacroDelta12Pct > 0.0)
+         {
+            rec.result       = "BLOCKED";
+            rec.block_reason = "DELTA_CONFLICT";
+            rec.ai_reason_text = StringFormat("SELL blocked: 60m Macro Delta %+.1f%% > 0.0%% in non-trend market", g_masterMacroDelta12Pct);
+            LogTradeAttempt(rec);
+            return false;
+         }
+         // Fast delta rejection if strong short-term aggressive absorption (> +15%)
+         else if(g_masterFastDelta3Pct > 15.0)
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "FAST_DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("SELL blocked: 15m Fast Delta %+.1f%% > 0 (Short-term Buyer Absorption)", g_masterFastDelta3Pct);
+            rec.ai_reason_text = StringFormat("SELL blocked: 15m Fast Delta %+.1f%% > +15.0%% (Severe Short-term Buyer Absorption)", g_masterFastDelta3Pct);
             LogTradeAttempt(rec);
             return false;
          }
@@ -544,6 +610,49 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       }
    }
 
+   //=== GATE 2d: Consecutive Same-Level Cluster Loss Brake ===
+   // Prevent spamming entries into the same level if stopped out repeatedly (e.g. 2+ losses within 8 pts in 60 mins)
+   {
+      double curPrice = (direction == "BUY" ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID));
+      datetime windowStart = TimeCurrent() - 3600; // 60 minutes rolling
+      HistorySelect(windowStart, TimeCurrent());
+      int histDeals = HistoryDealsTotal();
+      int recentSameLevelLosses = 0;
+
+      for(int d = histDeals - 1; d >= 0; d--)
+      {
+         ulong deal = HistoryDealGetTicket(d);
+         if(deal == 0) continue;
+         if(HistoryDealGetString(deal, DEAL_SYMBOL) != _Symbol) continue;
+         if(HistoryDealGetInteger(deal, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
+         
+         double profit = HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_SWAP) + HistoryDealGetDouble(deal, DEAL_COMMISSION);
+         if(profit < 0.0)
+         {
+            long dealType = HistoryDealGetInteger(deal, DEAL_TYPE);
+            string closedDir = (dealType == DEAL_TYPE_BUY ? "BUY" : "SELL");
+            if(closedDir == direction)
+            {
+               double dealPrice = HistoryDealGetDouble(deal, DEAL_PRICE);
+               if(MathAbs(dealPrice - curPrice) <= 8.0) // within 8 USD points
+               {
+                  recentSameLevelLosses++;
+               }
+            }
+         }
+      }
+
+      if(recentSameLevelLosses >= 2)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "PRICE_CLUSTER_LOSS_LIMIT";
+         rec.ai_reason_text = StringFormat("%s blocked: %d stopped trades at price level %.2f within last 60 mins",
+                                           direction, recentSameLevelLosses, curPrice);
+         LogTradeAttempt(rec);
+         return false;
+      }
+   }
+
    //=== GATE 3: Directional lock ===
    if(InpUseDirectionalLock)
    {
@@ -699,7 +808,12 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       atrNow = atrBufVal[0];
    bool useATR = (InpUseATRStopLoss && atrNow > 0.0);
 
-   double lot = CalculateDynamicBalanceLot();
+   // SL/TP distances (ATR contract: SL=4xATR, TP=8xATR)
+   double slDistUSD = useATR ? (InpATRMultiplier * atrNow) : InpExitSLDistUSD;
+   if(slDistUSD <= 0.0) slDistUSD = 5.0; // fallback safety
+   double tpDistUSD = useATR ? (slDistUSD * InpFomoRRRatio) : InpExitTPDistUSD;
+
+   double lot = CalculateDynamicBalanceLot(slDistUSD);
 
    if(lot <= 0.0)
    {
@@ -708,10 +822,6 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       LogTradeAttempt(rec);
       return false;
    }
-
-   // SL/TP distances (ATR contract: SL=4xATR, TP=8xATR)
-   double slDistUSD = useATR ? (InpATRMultiplier * atrNow) : PriceDistForLoss(InpFixedRiskUSD, lot);
-   double tpDistUSD = useATR ? (slDistUSD * InpFomoRRRatio) : InpExitTPDistUSD;
 
    if(slDistUSD <= 0.0 || tpDistUSD <= 0.0)
    {
@@ -738,7 +848,7 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       rec.sl_price    = sl;
       rec.tp_price    = tp;
       rec.lot_size    = lot;
-      rec.risk_usd    = (useATR ? (slDistUSD * lot * SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE) / SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE)) : InpFixedRiskUSD);
+      rec.risk_usd    = (slDistUSD * lot * SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE) / MathMax(SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE), 1e-8));
    }
    LogTradeAttempt(rec);
    return ok;
@@ -827,44 +937,74 @@ void GetNextTradeAction(string &nextAction)
       return;
    }
 
-   // 4. Check 3-Boss Alignment: Dual-AI Divergence & Dual-Horizon Delta Conflict
+   // 3.5. Check Sweep Memory Lockout
+   datetime bar0T = iTime(_Symbol, _Period, 0);
+   if(dir == "SELL" && g_lastSweepLowTime > 0 && (bar0T - g_lastSweepLowTime) <= 6 * PeriodSeconds(_Period))
+   {
+      nextAction = "BLOCKED (Sweep Low Lockout — 6 Bar Protection)";
+      g_lastBlockSource = "SWEEP_LOCKOUT";
+      g_lastBlockReason = "SWEEP_LOW_LOCKOUT";
+      return;
+   }
+   if(dir == "BUY" && g_lastSweepHighTime > 0 && (bar0T - g_lastSweepHighTime) <= 6 * PeriodSeconds(_Period))
+   {
+      nextAction = "BLOCKED (Sweep High Lockout — 6 Bar Protection)";
+      g_lastBlockSource = "SWEEP_LOCKOUT";
+      g_lastBlockReason = "SWEEP_HIGH_LOCKOUT";
+      return;
+   }
+
+   // 4. Check 3-Boss Alignment: Dual-AI Hierarchical Consensus & Order Flow Delta
    if(g_masterValid)
    {
+      bool strongGru = (dirProb >= 0.60 && margin >= 0.15);
       if(dir == "BUY")
       {
-         if(g_masterProbBull < 0.475 || g_masterProbBull <= g_masterProbBear || g_masterMacroDelta12Pct < 0.0 || g_masterDelta < 0.0)
+         if(!strongGru && (g_masterProbBull < 0.55 || (g_masterProbBull - g_masterProbBear) < 0.10 || g_masterProbBull <= g_masterProbBear))
          {
-            nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s %.1f%% | 60m Delta %+.1f%%)",
-                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterMacroDelta12Pct);
+            nextAction = StringFormat("BLOCKED (AI Divergence: Macro BUY vs Micro %s %.1f%%)",
+                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0);
             g_lastBlockSource = "DUAL_AI";
-            g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s | 60m Delta %+.1f%%)",
-                                             (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterMacroDelta12Pct);
+            g_lastBlockReason = StringFormat("DIVERGENCE (Macro BUY vs Micro %s)", (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"));
             return;
          }
-         else if(g_masterFastDelta3Pct < 0.0)
+         else if(g_masterMacroDelta12Pct < -10.0 || (!strongGru && g_masterMacroDelta12Pct < 0.0))
          {
-            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% < 0)", g_masterFastDelta3Pct);
+            nextAction = StringFormat("BLOCKED (Flow Conflict: 60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
             g_lastBlockSource = "ORDER_FLOW";
-            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% < 0)", g_masterFastDelta3Pct);
+            g_lastBlockReason = StringFormat("DELTA_CONFLICT (60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
+            return;
+         }
+         else if(g_masterFastDelta3Pct < -15.0)
+         {
+            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% < -15%%)", g_masterFastDelta3Pct);
+            g_lastBlockSource = "ORDER_FLOW";
+            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% < -15%%)", g_masterFastDelta3Pct);
             return;
          }
       }
       else if(dir == "SELL")
       {
-         if(g_masterProbBear < 0.475 || g_masterProbBear <= g_masterProbBull || g_masterMacroDelta12Pct > 0.0 || g_masterDelta > 0.0)
+         if(!strongGru && (g_masterProbBear < 0.55 || (g_masterProbBear - g_masterProbBull) < 0.10 || g_masterProbBear <= g_masterProbBull))
          {
-            nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s %.1f%% | 60m Delta %+.1f%%)",
-                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0, g_masterMacroDelta12Pct);
+            nextAction = StringFormat("BLOCKED (AI Divergence: Macro SELL vs Micro %s %.1f%%)",
+                                      (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), MathMax(g_masterProbBull, g_masterProbBear) * 100.0);
             g_lastBlockSource = "DUAL_AI";
-            g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s | 60m Delta %+.1f%%)",
-                                             (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"), g_masterMacroDelta12Pct);
+            g_lastBlockReason = StringFormat("DIVERGENCE (Macro SELL vs Micro %s)", (g_masterProbBull >= g_masterProbBear ? "BULL" : "BEAR"));
             return;
          }
-         else if(g_masterFastDelta3Pct > 0.0)
+         else if(g_masterMacroDelta12Pct > 10.0 || (!strongGru && g_masterMacroDelta12Pct > 0.0))
          {
-            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% > 0)", g_masterFastDelta3Pct);
+            nextAction = StringFormat("BLOCKED (Flow Conflict: 60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
             g_lastBlockSource = "ORDER_FLOW";
-            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% > 0)", g_masterFastDelta3Pct);
+            g_lastBlockReason = StringFormat("DELTA_CONFLICT (60m Delta %+.1f%%)", g_masterMacroDelta12Pct);
+            return;
+         }
+         else if(g_masterFastDelta3Pct > 15.0)
+         {
+            nextAction = StringFormat("BLOCKED (Flow Divergence: 15m Fast Delta %+.1f%% > +15%%)", g_masterFastDelta3Pct);
+            g_lastBlockSource = "ORDER_FLOW";
+            g_lastBlockReason = StringFormat("FAST_DELTA_CONFLICT (15m Delta %+.1f%% > +15%%)", g_masterFastDelta3Pct);
             return;
          }
       }

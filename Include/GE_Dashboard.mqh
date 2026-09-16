@@ -64,7 +64,7 @@ int g_dbY = -1;
 
 // Forward declarations
 void GetActiveConvictionSettings(double &activeConf, double &activeMargin, string &activeZoneName, string &activeZoneSched);
-double CalculateDynamicBalanceLot();
+double CalculateDynamicBalanceLot(const double slDistUSD = 0.0);
 
 //+------------------------------------------------------------------+
 //| Helper to create label text elements                             |
@@ -263,7 +263,7 @@ void DashboardBuildLines(string &lines[])
    if(g_dashKillSwitchActive || g_killSwitchBtnActive)
       ArrayAdd(lines, "\x26D4 Status       : TRADING HALTED (Kill Switch Active)");
    else
-      ArrayAdd(lines, StringFormat("\x25CF Status       : TRADING ACTIVE (Lot: %.2f | Pos: %d/%d | Sentinel Trail: Step Ladder $15->$10)", dynLot, openCount, InpMaxConcurrentTrades));
+      ArrayAdd(lines, StringFormat("\x25CF Status       : TRADING ACTIVE (Lot: %.2f | Pos: %d/%d | Sentinel Trail: Step Ladder $25->$15)", dynLot, openCount, InpMaxConcurrentTrades));
 
    // Line 1: Current IST Time (with seconds) & Active Zone
    MqlDateTime dt;
@@ -313,6 +313,10 @@ void DashboardBuildLines(string &lines[])
    string sweepStr = "NO SWEEP (Normal In-Trend Flow)";
    if(g_masterLiquiditySweep <= -0.99) sweepStr = "SWEEP LOW (Bullish Liquidity Reversal Armed)";
    else if(g_masterLiquiditySweep >= 0.99) sweepStr = "SWEEP HIGH (Bearish Liquidity Reversal Armed)";
+   else if(g_lastSweepLowTime > 0 && (TimeCurrent() - g_lastSweepLowTime) <= 6 * PeriodSeconds(_Period))
+      sweepStr = StringFormat("SWEEP LOW LOCKOUT (%s)", TimeToString(g_lastSweepLowTime, TIME_MINUTES));
+   else if(g_lastSweepHighTime > 0 && (TimeCurrent() - g_lastSweepHighTime) <= 6 * PeriodSeconds(_Period))
+      sweepStr = StringFormat("SWEEP HIGH LOCKOUT (%s)", TimeToString(g_lastSweepHighTime, TIME_MINUTES));
    ArrayAdd(lines, StringFormat("Liquidity Sweep: %s", sweepStr));
 
    // Line 7: Gaussian Kernel Channel (GKC Envelope)
