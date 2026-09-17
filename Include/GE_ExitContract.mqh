@@ -37,7 +37,8 @@ input double InpTrailATRMultiplier    = 2.5;    // Trailing Stop Distance in ATR
 input group "=== Initial Risk Contract (SL / TP / Reversal) ==="
 input bool   InpUseATRStopLoss        = true;   // Use ATR-based SL/TP instead of fixed-USD distances
 input double InpATRMultiplier         = 2.5;    // Initial SL = InpATRMultiplier x ATR(14) (2.5x ATR ~3.5-5.0 pts)
-input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRatio (7.5x ATR => 1:3 RR)
+input double InpSLBufferUSD           = 4.5;    // Stop-Loss Liquidity Sweep Buffer in USD/pts (4.0-5.0 pts cushion)
+input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRatio (1:3 RR)
 input double InpFixedRiskUSD          = 50.0;   // FIXED loss per trade in account USD (structural fallback)
 input double InpExitSLDistUSD         = 6.0;    // Reference SL distance used for lot-sizing math ($6.00)
 input double InpExitTPDistUSD         = 150.0;  // Reference Take-profit distance in USD ($150.00)

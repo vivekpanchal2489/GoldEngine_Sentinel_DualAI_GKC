@@ -313,11 +313,11 @@ double CalculateDynamicBalanceLot(const double slDistUSD = 0.0)
       double atrBuf[];
       int atrH = iATR(_Symbol, _Period, 14);
       if(atrH != INVALID_HANDLE && CopyBuffer(atrH, 0, 0, 1, atrBuf) > 0 && atrBuf[0] > 0.0)
-         effectiveSlDist = atrBuf[0] * InpATRMultiplier;
+         effectiveSlDist = (atrBuf[0] * InpATRMultiplier) + InpSLBufferUSD;
       else
-         effectiveSlDist = InpExitSLDistUSD;
+         effectiveSlDist = InpExitSLDistUSD + InpSLBufferUSD;
    }
-   if(effectiveSlDist <= 0.0) effectiveSlDist = 5.0;
+   if(effectiveSlDist <= 0.0) effectiveSlDist = 5.0 + InpSLBufferUSD;
 
    double calculatedLot = 0.0;
    double lossPerLot = (effectiveSlDist / tickSize) * tickValue;

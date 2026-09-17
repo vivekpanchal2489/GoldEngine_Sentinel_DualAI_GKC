@@ -864,10 +864,11 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       atrNow = atrBufVal[0];
    bool useATR = (InpUseATRStopLoss && atrNow > 0.0);
 
-   // SL/TP distances (ATR contract: SL=4xATR, TP=8xATR)
-   double slDistUSD = useATR ? (InpATRMultiplier * atrNow) : InpExitSLDistUSD;
-   if(slDistUSD <= 0.0) slDistUSD = 5.0; // fallback safety
-   double tpDistUSD = useATR ? (slDistUSD * InpFomoRRRatio) : InpExitTPDistUSD;
+   // SL/TP distances (ATR contract: SL = InpATRMultiplier x ATR + InpSLBufferUSD)
+   double baseSlDist = useATR ? (InpATRMultiplier * atrNow) : InpExitSLDistUSD;
+   double slDistUSD  = baseSlDist + InpSLBufferUSD;
+   if(slDistUSD <= 0.0) slDistUSD = 5.0 + InpSLBufferUSD; // fallback safety
+   double tpDistUSD  = useATR ? (slDistUSD * InpFomoRRRatio) : InpExitTPDistUSD;
 
    double lot = CalculateDynamicBalanceLot(slDistUSD);
 
