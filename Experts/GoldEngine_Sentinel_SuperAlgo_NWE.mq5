@@ -187,12 +187,6 @@ void OnTick()
       }
    }
 
-   // 2. Real-Time Tick Protection & Telemetry
-   UpdateNweEngine();
-   UpdateNewsCalendarState();
-   ExecuteHybridSmartShieldOnPositions();
+   // 2. High-Speed Tick-Level Trade Management (Zero-Latency Stop-Loss & Step-Ladder Ratchet)
    CheckExitContractTick();
-   RefreshTodayStats();
-   SyncDashboardState();
-   DashboardRefresh();
 }

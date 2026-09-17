@@ -42,6 +42,7 @@ input double InpFomoRRRatio           = 3.0;    // Initial TP = SL x InpFomoRRRa
 input double InpFixedRiskUSD          = 50.0;   // FIXED loss per trade in account USD (structural fallback)
 input double InpExitSLDistUSD         = 6.0;    // Reference SL distance used for lot-sizing math ($6.00)
 input double InpExitTPDistUSD         = 150.0;  // Reference Take-profit distance in USD ($150.00)
+input ulong  InpMagicNumber           = 760076; // Expert Advisor Unique Magic Number ID
 input int    InpMaxHoldMinutes        = 0;      // Max time in position before forced close (0 = DISABLED)
 input bool   InpExitOnReversal        = false;  // ONNX AI Reversal Exit (0 = DISABLED, rely strictly on Step-Ladder & Hard SL)
 input double InpExitReversalP         = 0.60;   // ONNX probability that flips a position to opposite side
@@ -65,12 +66,20 @@ double PriceDistForLoss(const double usdAmount, const double lot)
 class CTradeSafe : public CTrade
 {
 public:
+   CTradeSafe()
+   {
+      SetExpertMagicNumber(InpMagicNumber);
+      SetDeviationInPoints(20);
+   }
+
    bool BuySafe(const double lot, const string symbol, const double slDistUSD, const double tpDistUSD, const double price = 0.0)
    {
       double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
       double sl  = NormalizeDouble(ask - slDistUSD, _Digits);
       double tp  = (tpDistUSD > 0.0) ? NormalizeDouble(ask + tpDistUSD, _Digits) : 0.0;
       SetTypeFillingBySymbol(symbol);
+      SetExpertMagicNumber(InpMagicNumber);
+      SetDeviationInPoints(20);
       return Buy(lot, symbol, price, sl, tp);
    }
 
@@ -80,6 +89,8 @@ public:
       double sl  = NormalizeDouble(bid + slDistUSD, _Digits);
       double tp  = (tpDistUSD > 0.0) ? NormalizeDouble(bid - tpDistUSD, _Digits) : 0.0;
       SetTypeFillingBySymbol(symbol);
+      SetExpertMagicNumber(InpMagicNumber);
+      SetDeviationInPoints(20);
       return Sell(lot, symbol, price, sl, tp);
    }
 };
