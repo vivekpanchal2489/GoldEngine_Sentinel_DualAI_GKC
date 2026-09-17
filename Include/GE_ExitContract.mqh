@@ -21,10 +21,14 @@
 //+------------------------------------------------------------------+
 //| Exit Contract Inputs                                             |
 //+------------------------------------------------------------------+
-input group "=== Original Sentinel SL Trailing & Profit Lock Engine ==="
+input group "=== Two-Phase Hybrid Trailing & Profit Lock Engine ==="
 input bool   InpUseLadderTrail        = true;   // Enable Sentinel Trailing Stop-Loss Engine
-input bool   InpUseStepLadder         = true;   // Method A: USD Step Ladder Trail (Zone-Adaptive Big-Profit)
-input double InpStepSizeUSD           = 50.0;   // Reference Step Size in USD ($50.00 Min Win Lock)
+input bool   InpUseStepLadder         = true;   // Method A: Two-Phase Hybrid Break-Even & Big-Profit Ratchet
+input double InpPhase1TriggerUSD      = 50.0;   // Phase 1: Profit in USD to trigger Break-Even ($50.00 = +3.3 pts)
+input double InpPhase1LockUSD         = 5.0;    // Phase 1: Profit to lock in USD (+$5.00 = spread/commission cushion)
+input double InpPhase2TriggerUSD      = 75.0;   // Phase 2: Profit in USD to start Big-Profit Ratchet ($75.00 = +5.0 pts)
+input double InpPhase2FirstLockUSD    = 50.0;   // Phase 2: Guaranteed profit locked at $75 ($50.00 minimum win)
+input double InpPhase2StepUSD         = 25.0;   // Phase 2: Step-ladder climbing rung size ($25.00)
 input bool   InpUseATRTrailing        = true;   // Method B: Dynamic ATR Volatility Trailing (if StepLadder disabled)
 input double InpTrailLockUSD          = 50.0;   // Unrealized Profit in USD to start ATR trailing ($50.00)
 input double InpTrailDistUSD          = 25.0;   // Fallback Trailing Distance in USD ($25.00)
@@ -164,22 +168,27 @@ void CheckExitContractTick()
 
       double targetSL = 0.0;
       bool modifyNeeded = false;
+      int activeZone = GetActiveZoneId();
 
-      //=== METHOD A: USD-based Zone-Adaptive Step Ladder Trail ===
+      //=== METHOD A: USD-based Two-Phase Hybrid Break-Even & Big-Profit Ratchet ===
       if(InpUseStepLadder)
       {
-         int activeZone = GetActiveZoneId();
          double lockedProfitUSD = 0.0;
          
-         // Zone 1 (Asian) & Zone 2 (London/NY Peak): Big Profit Mode ($50 min win lock at $75 profit, scaling infinitely)
+         // Zone 1 (Asian) & Zone 2 (London/NY Peak): Two-Phase Hybrid Engine
          if(activeZone == 1 || activeZone == 2)
          {
-            if(profit >= 75.0)
+            // Phase 1: Risk Elimination Buffer at +$50 Profit -> Move SL to Break-Even + $5
+            // Gives a full 3.0+ points of breathing room from peak so long runners are never choked!
+            if(profit >= InpPhase1TriggerUSD && profit < InpPhase2TriggerUSD)
             {
-               // First rung ($75 to $99.99): locks $50.00 minimum win
-               // Above $75: climbs in $25 rungs ($100->$75, $125->$100, $150->$125, $175->$150, $200->$175...)
-               int rungsAbove75 = (int)((profit - 75.0) / 25.0);
-               lockedProfitUSD = 50.0 + (rungsAbove75 * 25.0);
+               lockedProfitUSD = InpPhase1LockUSD; // $5.00 (Break-Even + spread/commission)
+            }
+            // Phase 2: Big-Profit Step-Ladder Ratchet at >= $75 Profit ($50 lock climbing in $25 rungs)
+            else if(profit >= InpPhase2TriggerUSD)
+            {
+               int rungsAbovePhase2 = (int)((profit - InpPhase2TriggerUSD) / InpPhase2StepUSD);
+               lockedProfitUSD = InpPhase2FirstLockUSD + (rungsAbovePhase2 * InpPhase2StepUSD);
             }
          }
          // Zone 3 (Late NY Close): Micro-Trailing Mode (Every $10 USD ratchet)
@@ -187,9 +196,13 @@ void CheckExitContractTick()
          {
             if(profit >= 15.0 && profit < 25.0)
             {
-               lockedProfitUSD = 10.0;
+               lockedProfitUSD = 5.0;
             }
-            else if(profit >= 25.0)
+            else if(profit >= 25.0 && profit < 35.0)
+            {
+               lockedProfitUSD = 15.0;
+            }
+            else if(profit >= 35.0)
             {
                int n = (int)(profit / 10.0);
                lockedProfitUSD = (n - 1) * 10.0;
@@ -271,25 +284,24 @@ void CheckExitContractTick()
             if(InpUseStepLadder)
             {
                double lockedProfitUSD = 0.0;
-               if(lot <= 0.09)
+               if(activeZone == 1 || activeZone == 2)
                {
-                  if(profit >= 15.0 && profit < 30.0)
-                     lockedProfitUSD = 10.0;
-                  else if(profit >= 30.0)
+                  if(profit >= InpPhase1TriggerUSD && profit < InpPhase2TriggerUSD)
+                     lockedProfitUSD = InpPhase1LockUSD;
+                  else if(profit >= InpPhase2TriggerUSD)
                   {
-                     int n = (int)(profit / InpStepSizeUSD);
-                     lockedProfitUSD = (n - 1) * InpStepSizeUSD;
+                     int rungsAbovePhase2 = (int)((profit - InpPhase2TriggerUSD) / InpPhase2StepUSD);
+                     lockedProfitUSD = InpPhase2FirstLockUSD + (rungsAbovePhase2 * InpPhase2StepUSD);
                   }
                }
                else
                {
-                  if(profit >= 2.0 * InpStepSizeUSD)
-                  {
-                     int n = (int)(profit / InpStepSizeUSD);
-                     lockedProfitUSD = (n - 1) * InpStepSizeUSD;
-                  }
+                  if(profit >= 15.0 && profit < 25.0) lockedProfitUSD = 5.0;
+                  else if(profit >= 25.0 && profit < 35.0) lockedProfitUSD = 15.0;
+                  else if(profit >= 35.0) lockedProfitUSD = ((int)(profit / 10.0) - 1) * 10.0;
                }
-               PrintFormat("[Ladder-Trail-Step] Updated #%I64u SL: %.2f -> %.2f (USD Profit: %.2f, locked in +$%.2f USD).",
+
+               PrintFormat("[Hybrid-Ladder-Trail] Updated #%I64u SL: %.2f -> %.2f (USD Profit: %.2f, locked in +$%.2f USD).",
                            ticket, currentSL, targetSL, profit, lockedProfitUSD);
             }
             else
