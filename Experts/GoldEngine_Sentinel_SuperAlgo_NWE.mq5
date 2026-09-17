@@ -12,6 +12,7 @@
 #include <GE_RiskManagement.mqh>
 #include <GE_ExitContract.mqh>
 #include <GE_EntryGates.mqh>
+#include <GE_NewsShield.mqh>
 #include <GE_NadarayaWatson.mqh>
 #include <GoldAI_Features.mqh>
 #include <GoldAI_ONNXEngine.mqh>
@@ -125,6 +126,8 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 void OnTimer()
 {
    UpdateNweEngine();
+   UpdateNewsCalendarState();
+   ExecuteHybridSmartShieldOnPositions();
    RefreshTodayStats();
    SyncDashboardState();
    DashboardRefresh();
@@ -143,6 +146,7 @@ void OnTick()
       lastBarTime = barTime;
       UpdateOnnxCache();
       UpdateNweEngine();
+      UpdateNewsCalendarState();
       SyncDashboardState();
       return;
    }
@@ -153,6 +157,8 @@ void OnTick()
       lastBarTime = barTime;
       UpdateOnnxCache();
       UpdateNweEngine();
+      UpdateNewsCalendarState();
+      ExecuteHybridSmartShieldOnPositions();
       DispatchEnabledStrategies();
       CheckExitContract(g_cachedOnnxBull, g_cachedOnnxBear, g_cachedOnnxValid);
    }
@@ -183,6 +189,8 @@ void OnTick()
 
    // 2. Real-Time Tick Protection & Telemetry
    UpdateNweEngine();
+   UpdateNewsCalendarState();
+   ExecuteHybridSmartShieldOnPositions();
    CheckExitContractTick();
    RefreshTodayStats();
    SyncDashboardState();

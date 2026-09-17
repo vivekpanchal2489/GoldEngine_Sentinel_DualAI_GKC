@@ -16,6 +16,7 @@
 #include <GE_ExitContract.mqh>
 #include <GE_DecisionLog.mqh>
 #include <GE_NadarayaWatson.mqh>
+#include <GE_NewsShield.mqh>
 
 //+------------------------------------------------------------------+
 //| Kill Switch (EMERGENCY STOP)                                     |
@@ -286,6 +287,17 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
       rec.result       = "BLOCKED";
       rec.block_reason = "SESSION_STANDBY";
       rec.ai_reason_text = zoneBlockReason;
+      LogTradeAttempt(rec);
+      return false;
+   }
+
+   //=== GATE 0.6: Autonomous News Defense Matrix & Spread/Volatility Shock Guard ===
+   string newsBlockReason = "";
+   if(IsNewsShieldBlocking(newsBlockReason))
+   {
+      rec.result       = "BLOCKED";
+      rec.block_reason = "NEWS_SHIELD_BLOCK";
+      rec.ai_reason_text = newsBlockReason;
       LogTradeAttempt(rec);
       return false;
    }
@@ -978,6 +990,16 @@ void GetNextTradeAction(string &nextAction)
       nextAction = StringFormat("BLOCKED (%s)", zoneBlockReason);
       g_lastBlockSource = "SESSION_STANDBY";
       g_lastBlockReason = zoneBlockReason;
+      return;
+   }
+
+   // 3.2 Check Autonomous News Defense Matrix & Spread Shock
+   string newsBlockReason = "";
+   if(IsNewsShieldBlocking(newsBlockReason))
+   {
+      nextAction = StringFormat("BLOCKED (%s)", newsBlockReason);
+      g_lastBlockSource = "NEWS_SHIELD";
+      g_lastBlockReason = newsBlockReason;
       return;
    }
 

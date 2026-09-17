@@ -8,6 +8,7 @@
 #define GE_DASHBOARD_MQH
 
 #include <GE_NadarayaWatson.mqh>
+#include <GE_NewsShield.mqh>
 
 //--- Inputs ---
 enum ENUM_DB_POSITION
@@ -31,7 +32,7 @@ input int              InpDashboardY         = 60;                 // Custom Y O
 #define DB_BG         (DB_PREFIX + "DbPanelBg")
 #define DB_TITLE      (DB_PREFIX + "DbTitle")
 #define DB_ROW(i)     (DB_PREFIX + "R" + IntegerToString(i))
-#define DB_MAXROWS    11
+#define DB_MAXROWS    12
 #define DB_BTN        (DB_PREFIX + "KillBtn")
 
 //--- Global variables read by dashboard ---
@@ -160,7 +161,7 @@ void CreateInterface()
    }
 
    int panelWidth  = 960;
-   int panelHeight = 460;
+   int panelHeight = 495;
    int margin      = 25;
 
    int chartWidth  = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
@@ -333,10 +334,13 @@ void DashboardBuildLines(string &lines[])
    ArrayAdd(lines, StringFormat("GKC (10 3 open): Mid: %.2f | Upper: %.2f | Lower: %.2f %s",
             GetNweMidline(), GetNweUpperBand(), GetNweLowerBand(), nweVeto));
 
-   // Line 8: Next Planned Trade Action
+   // Line 8: Sentinel News Defense Matrix
+   ArrayAdd(lines, StringFormat("News Defense   : %s", g_newsStatusText));
+
+   // Line 9: Next Planned Trade Action
    ArrayAdd(lines, StringFormat("Next Trade     : %s", g_dashNextAction));
 
-   // Line 9: Last block reason
+   // Line 10: Last block reason
    if(StringLen(g_dashLastBlockReason) > 0)
    {
       if(StringLen(g_dashLastBlockSource) > 0)
@@ -353,7 +357,7 @@ void DashboardBuildLines(string &lines[])
       ArrayAdd(lines, "Last block     : NONE (All Systems Clear)");
    }
 
-   // Line 10: Today's stats
+   // Line 11: Today's stats
    ArrayAdd(lines, StringFormat("Today          : %d trades | %dW %dL | Net: %s$%.2f",
             g_dashTradesToday, g_dashWinsToday, g_dashLossesToday,
             (g_dashNetPLToday >= 0 ? "+" : "-"), MathAbs(g_dashNetPLToday)));
