@@ -436,20 +436,41 @@ void DashboardRefresh()
          if(StringFind(lines[i], "VETO") >= 0 && StringFind(lines[i], "NONE") < 0) rowColor = C'239,83,80';
          else rowColor = C'255,245,157';
       }
-      else if(i == 8) // Next Trade
+      else if(i == 8) // News Defense
       {
-         if(StringFind(lines[i], "Blocked") >= 0) rowColor = C'239,83,80';
-         else if(StringFind(lines[i], "BUY") >= 0) rowColor = C'0,255,255';
-         else if(StringFind(lines[i], "SELL") >= 0) rowColor = C'255,165,0';
-         else rowColor = clrWhite;
+         if(StringFind(lines[i], "FREEZE") >= 0 || StringFind(lines[i], "SHIELD") >= 0 || StringFind(lines[i], "SHOCK") >= 0)
+            rowColor = C'239,83,80';
+         else if(StringFind(lines[i], "APPROACHING") >= 0 || StringFind(lines[i], "PENDING") >= 0)
+            rowColor = C'255,165,0';
+         else
+            rowColor = C'178,223,219';
       }
-      else if(i == 9) // Last Block
-         rowColor = C'150,150,150';
-      else if(i == 10) // Today's Stats
+      else if(i == 9) // Next Trade
       {
-         if(g_dashNetPLToday > 0.0) rowColor = C'76,175,80';
-         else if(g_dashNetPLToday < 0.0) rowColor = C'239,83,80';
-         else rowColor = clrWhite;
+         if(StringFind(lines[i], "BLOCKED") >= 0 || StringFind(lines[i], "Blocked") >= 0)
+            rowColor = C'239,83,80';
+         else if(StringFind(lines[i], "BUY") >= 0)
+            rowColor = C'0,255,255';
+         else if(StringFind(lines[i], "SELL") >= 0)
+            rowColor = C'255,165,0';
+         else
+            rowColor = clrWhite;
+      }
+      else if(i == 10) // Last Block
+      {
+         if(StringFind(lines[i], "NONE") >= 0)
+            rowColor = C'76,175,80';
+         else
+            rowColor = C'255,183,77';
+      }
+      else if(i == 11) // Today's Stats
+      {
+         if(g_dashNetPLToday > 0.0)
+            rowColor = C'76,175,80';
+         else if(g_dashNetPLToday < 0.0)
+            rowColor = C'239,83,80';
+         else
+            rowColor = clrWhite;
       }
 
       if(ObjectGetInteger(0, DB_ROW(i), OBJPROP_COLOR) != rowColor)
