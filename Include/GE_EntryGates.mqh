@@ -39,6 +39,8 @@ input int    InpOppDirCooldownSecs = 300;     // Seconds to block same-direction
 //+------------------------------------------------------------------+
 input group "=== ADX/ATR/Regime Thresholds ==="
 input double InpStructuralADXHardTrendLock = 35.0;  // ADX above which reversion trading is fully disabled (strong trend)
+input double InpReversalMaxADX              = 32.0;  // Max ADX allowed for counter-trend reversals (Setup B & C blocked > 32)
+input bool   InpUseTrendAnchor              = true;  // Enable Macro Trend Anchor (200 EMA + NWE Midline slope guard)
 input double InpADXTrendGuard              = 25.0;  // ADX above this reversion is on hold (trend guard)
 input double InpRegimeADXThreshold         = 25.0;  // ADX that separates trending vs. ranging market behavior
 input double InpVolatilitySpikeRatio       = 1.4;   // How much current volatility must exceed average to flag a spike
@@ -352,6 +354,39 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    bool isStrongAdxTrend = (g_cachedAdx >= InpRegimeADXThreshold);
    double effectiveMargin = isStrongAdxTrend ? (activeMargin * 0.70) : activeMargin;
 
+   // 0.9 GUARD: ADX Regime Gate for Reversal Setups (Setup B & C)
+   // In strong trend regimes (ADX >= InpReversalMaxADX), block counter-trend fades (e.g., fading new highs above EMA 200)
+   if(isReversalSetup && g_cachedAdx >= InpReversalMaxADX)
+   {
+      double ema200Val = 0.0;
+      double ema200Buf[1];
+      int ema200H = iMA(_Symbol, _Period, 200, 0, MODE_EMA, PRICE_CLOSE);
+      if(ema200H != INVALID_HANDLE && CopyBuffer(ema200H, 0, 0, 1, ema200Buf) > 0)
+         ema200Val = ema200Buf[0];
+
+      double curAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double curBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+      if(direction == "SELL" && ema200Val > 0.0 && curBid > ema200Val)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "ADX_TREND_VETO";
+         rec.ai_reason_text = StringFormat("SELL Reversal blocked: ADX %.1f >= %.1f in Bull Trend (Bid %.2f > EMA200 %.2f)",
+                                           g_cachedAdx, InpReversalMaxADX, curBid, ema200Val);
+         LogTradeAttempt(rec);
+         return false;
+      }
+      else if(direction == "BUY" && ema200Val > 0.0 && curAsk < ema200Val)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "ADX_TREND_VETO";
+         rec.ai_reason_text = StringFormat("BUY Reversal blocked: ADX %.1f >= %.1f in Bear Trend (Ask %.2f < EMA200 %.2f)",
+                                           g_cachedAdx, InpReversalMaxADX, curAsk, ema200Val);
+         LogTradeAttempt(rec);
+         return false;
+      }
+   }
+
    if(!isReversalSetup)
    {
       if(dirProb < InpStrategyOnnxMinProb || dirProb <= oppProb || margin < effectiveMargin)
@@ -421,21 +456,23 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
    {
       if(isReversalSetup)
       {
-         // Reversal setups (Turtle Soup & NWE Sniper) are specifically designed to fade pumps/dumps at extremes.
-         // They are exempt from 60m macro delta lag, but blocked if fast 15m delta is an extreme freight train (> 25%).
-         if(direction == "BUY" && g_masterFastDelta3Pct < -25.0)
+         // Reversal setups (Turtle Soup & NWE Sniper) must have confirmed order flow deceleration:
+         // Never sell into active buyer aggression (Fast Delta > 0% or Macro Delta > +5.0%), and never buy into seller aggression
+         if(direction == "SELL" && (g_masterFastDelta3Pct > 0.0 || g_masterMacroDelta12Pct > 5.0))
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "FAST_DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("BUY Reversal blocked: Extreme Fast Selling Pressure (%+.1f%% < -25.0%%)", g_masterFastDelta3Pct);
+            rec.ai_reason_text = StringFormat("SELL Reversal blocked: Positive Buyer Aggression (Fast %+.1f%%, Macro %+.1f%%)",
+                                              g_masterFastDelta3Pct, g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
-         else if(direction == "SELL" && g_masterFastDelta3Pct > 25.0)
+         else if(direction == "BUY" && (g_masterFastDelta3Pct < 0.0 || g_masterMacroDelta12Pct < -5.0))
          {
             rec.result       = "BLOCKED";
             rec.block_reason = "FAST_DELTA_CONFLICT";
-            rec.ai_reason_text = StringFormat("SELL Reversal blocked: Extreme Fast Buyer Absorption (%+.1f%% > +25.0%%)", g_masterFastDelta3Pct);
+            rec.ai_reason_text = StringFormat("BUY Reversal blocked: Negative Seller Aggression (Fast %+.1f%%, Macro %+.1f%%)",
+                                              g_masterFastDelta3Pct, g_masterMacroDelta12Pct);
             LogTradeAttempt(rec);
             return false;
          }
@@ -499,6 +536,40 @@ bool AttemptTradePlacement(const string strategySource, const string direction)
             LogTradeAttempt(rec);
             return false;
          }
+      }
+   }
+
+   // 3.5 GUARD: Macro Trend Anchor for Trend Trades (Never sell in strong bull structure or buy in strong bear structure)
+   if(!isReversalSetup && InpUseTrendAnchor)
+   {
+      double ema200Val = 0.0;
+      double ema200Buf[1];
+      int ema200H = iMA(_Symbol, _Period, 200, 0, MODE_EMA, PRICE_CLOSE);
+      if(ema200H != INVALID_HANDLE && CopyBuffer(ema200H, 0, 0, 1, ema200Buf) > 0)
+         ema200Val = ema200Buf[0];
+
+      double curAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double curBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double nweMid = GetNweMidline();
+      double nweMidPrev = GetNweMidlinePrev();
+
+      if(direction == "SELL" && ema200Val > 0.0 && curBid > ema200Val && nweMid >= nweMidPrev)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "TREND_ANCHOR_BULL_VETO";
+         rec.ai_reason_text = StringFormat("SELL blocked: Price %.2f > EMA200 %.2f with Bullish NWE Midline (%.2f >= %.2f)",
+                                           curBid, ema200Val, nweMid, nweMidPrev);
+         LogTradeAttempt(rec);
+         return false;
+      }
+      else if(direction == "BUY" && ema200Val > 0.0 && curAsk < ema200Val && nweMid <= nweMidPrev)
+      {
+         rec.result       = "BLOCKED";
+         rec.block_reason = "TREND_ANCHOR_BEAR_VETO";
+         rec.ai_reason_text = StringFormat("BUY blocked: Price %.2f < EMA200 %.2f with Bearish NWE Midline (%.2f <= %.2f)",
+                                           curAsk, ema200Val, nweMid, nweMidPrev);
+         LogTradeAttempt(rec);
+         return false;
       }
    }
 

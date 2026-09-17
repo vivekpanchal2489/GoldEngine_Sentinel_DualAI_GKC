@@ -23,6 +23,7 @@ input bool               InpUseNWEReversal      = true;        // Enable NWE Out
 //| Global State Variables                                           |
 //+------------------------------------------------------------------+
 double g_nweMidline     = 0.0;
+double g_nweMidlinePrev = 0.0;
 double g_nweUpperBand   = 0.0;
 double g_nweLowerBand   = 0.0;
 double g_nweMAE         = 0.0;
@@ -82,10 +83,11 @@ void UpdateNweEngine()
    }
 
    double mae = (N > 0) ? ((sumMAE / (double)N) * InpNweMultiplier) : 10.0;
-   g_nweMAE       = mae;
-   g_nweMidline   = y2[0];
-   g_nweUpperBand = y2[0] + mae;
-   g_nweLowerBand = y2[0] - mae;
+   g_nweMAE         = mae;
+   g_nweMidline     = y2[0];
+   g_nweMidlinePrev = (N > 3) ? y2[3] : y2[0];
+   g_nweUpperBand   = y2[0] + mae;
+   g_nweLowerBand   = y2[0] - mae;
 
    // 2. Scan for last closed regime breach backwards from bar 1
    int foundSignal = 0;
@@ -129,7 +131,9 @@ void UpdateNweEngine()
 double GetNweUpperBand()    { return g_nweUpperBand; }
 double GetNweLowerBand()    { return g_nweLowerBand; }
 double GetNweMidline()      { return g_nweMidline; }
+double GetNweMidlinePrev()  { return g_nweMidlinePrev; }
 double GetNweMAE()          { return g_nweMAE; }
+double GetNweSlope()        { return g_nweMidline - g_nweMidlinePrev; }
 int    GetNweActiveRegime() { return g_nweActiveRegime; }
 double GetNweAnchorPrice()  { return g_nweAnchorPrice; }
 
